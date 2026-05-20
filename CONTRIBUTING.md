@@ -84,6 +84,30 @@ sampling, context length, or aliasing in the wizard or NL parser, add
 `configs/models/<name>.yaml` and reference it in an experiment's `models:`
 list.
 
+## Releasing
+
+Releases are cut from `main` by the maintainer. The process:
+
+1. Move the relevant entries from `## [Unreleased]` to a new
+   `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md`.
+2. Commit on `main`:
+   ```bash
+   git add CHANGELOG.md && git commit -m "docs: prepare X.Y.Z changelog"
+   git push origin main
+   ```
+3. Run the release script. It validates the working tree, extracts the
+   matching CHANGELOG section, creates an annotated tag, pushes it, and
+   creates a GitLab Release with the same body:
+   ```bash
+   scripts/release.sh 0.2.0              # cut v0.2.0
+   scripts/release.sh 0.2.0 --dry-run    # preview without changing anything
+   ```
+
+Requirements: `jq`, `curl`, `python3`, and a GitLab token. The script
+reads the token from `GITLAB_TOKEN` first, then falls back to
+`~/.git-credentials`. The token must have the `api` scope (not just
+`write_repository`) to create a Release.
+
 ## Tests + CI
 
 - The CI runs YAML / JSON fixture validation and `pytest tests/` on every
