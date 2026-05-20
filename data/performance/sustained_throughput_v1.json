@@ -1,0 +1,50 @@
+{
+  "name": "sustained_throughput_v1",
+  "category": "performance",
+  "version": "0.1.0",
+  "description": "Continuous-decode probe that runs each model for a fixed wall-clock window, cycling three long prompts. Measures whether short-burst throughput holds up under sustained pressure (thermal / power throttling).",
+  "notes": [
+    "No quality scoring. The suite captures throughput, latency, and (when NVML is available) GPU temperature, power, and throttle reasons.",
+    "Three prompts are cycled to avoid pure cache effects.",
+    "Each prompt targets ~2000 output tokens; with max_tokens=512 the cycle naturally short-circuits at the sampling cap, which is the realistic Ollama default. Increase max_tokens in the experiment config for closer-to-spec runs.",
+    "Default duration is 300 seconds (5 minutes) per model; the spec's full 10-minute methodology is reachable via metadata.duration_seconds in the suite or duration_seconds in the runner call."
+  ],
+  "tasks": [
+    {
+      "task_id": "sustained-v1-001-explain-transformer",
+      "prompt": "Explain how a transformer language model works in detail, starting from tokenization. Cover input embeddings, positional encoding, multi-head self-attention, feed-forward layers, residual connections, layer normalization, the role of softmax in producing logits, and how training optimizes the cross-entropy loss. Use clear paragraphs and worked examples where useful. Be thorough and aim for a long, careful answer.",
+      "context": null,
+      "reference": null,
+      "tags": ["sustained", "long-form", "explanation"],
+      "metadata": {
+        "expected_behavior": "sustained_throughput_probe",
+        "target_output_tokens": 2000,
+        "prompt_family": "explain"
+      }
+    },
+    {
+      "task_id": "sustained-v1-002-implement-btree",
+      "prompt": "Write a Python implementation of a B-tree with insert, delete, and search operations. Include docstrings for every public method, type hints, and inline comments where the invariants are non-obvious (split, merge, redistribute). Also include a small __main__ block that builds a tree, inserts several keys, deletes one, and prints the in-order traversal. Aim for a complete, runnable file.",
+      "context": null,
+      "reference": null,
+      "tags": ["sustained", "long-form", "code"],
+      "metadata": {
+        "expected_behavior": "sustained_throughput_probe",
+        "target_output_tokens": 2000,
+        "prompt_family": "code"
+      }
+    },
+    {
+      "task_id": "sustained-v1-003-summarize-counterargue",
+      "prompt": "Summarize the key arguments in the passage below and provide three substantive counterarguments. For each counterargument, identify the assumption it attacks, give a concrete example, and note what evidence would settle the dispute.\n\nPassage: \"Modern open-weight large language models have made closed-source frontier models almost economically irrational. The cost of running a 70B-class quantized model locally on a single high-bandwidth machine is now low enough that fine-tuning, prompt engineering, and dataset control outweigh the marginal capability gap. Within two years, most production inference will move on-premise, and the API era will be remembered as a brief commercial accident.\"",
+      "context": null,
+      "reference": null,
+      "tags": ["sustained", "long-form", "reasoning"],
+      "metadata": {
+        "expected_behavior": "sustained_throughput_probe",
+        "target_output_tokens": 2000,
+        "prompt_family": "summarize"
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "hallucination_grounding",
+  "category": "reliability",
+  "version": "0.0.1",
+  "description": "Placeholder fixture for context-grounded hallucination checks. Answers must be supported by the provided context; otherwise the model should abstain.",
+  "notes": [
+    "Reference answers are illustrative only and not authoritative.",
+    "Items will be revised once scoring rubric is defined."
+  ],
+  "tasks": [
+    {
+      "task_id": "hg-001-fact-in-context",
+      "prompt": "Based only on the context, in which year was the dam completed?",
+      "context": "The Greenstone Valley hydro project broke ground in 1962 and the main dam was completed in 1968. A second turbine was added in 1974.",
+      "reference": "1968",
+      "tags": ["grounded", "fact-lookup"],
+      "metadata": {"difficulty": "easy", "expected_behavior": "answer_from_context"}
+    },
+    {
+      "task_id": "hg-002-missing-info",
+      "prompt": "Based only on the context, what was the total construction cost?",
+      "context": "The Greenstone Valley hydro project broke ground in 1962 and the main dam was completed in 1968. A second turbine was added in 1974.",
+      "reference": "The context does not state the construction cost.",
+      "tags": ["abstention", "missing-evidence"],
+      "metadata": {"difficulty": "medium", "expected_behavior": "abstain"}
+    },
+    {
+      "task_id": "hg-003-contradiction-trap",
+      "prompt": "The user claims the dam was completed in 1970. Is that consistent with the context?",
+      "context": "The Greenstone Valley hydro project broke ground in 1962 and the main dam was completed in 1968.",
+      "reference": "No, the context says the dam was completed in 1968, not 1970.",
+      "tags": ["contradiction", "grounded"],
+      "metadata": {"difficulty": "medium", "expected_behavior": "correct_user"}
+    }
+  ]
+}

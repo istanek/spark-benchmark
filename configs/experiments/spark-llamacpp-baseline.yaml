@@ -1,0 +1,30 @@
+experiment:
+  name: spark-llamacpp-v1-baseline
+  description: Shared baseline pass for Spark-only model comparison on llama.cpp
+  platforms:
+    - spark
+  backend: llamacpp
+  backend_version: b4234
+  models:
+    - qwen-3.6
+    - gemma-4
+    - nemotron-3
+    - nemotron-3-super
+  suites:
+    - mmlu_pro
+    - throughput
+    - ttft
+    - hallucination_grounding
+    - practical_structured_output
+  sampling:
+    temperature: 0.0
+    top_p: 1.0
+    seed: 42
+    max_tokens: 2048
+  context_lengths:
+    - 512
+    - 4096
+    - 16384
+    - 65536
+  repetitions: 3
+  warmup_runs: 1

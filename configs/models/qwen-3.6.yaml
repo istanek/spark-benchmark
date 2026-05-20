@@ -1,0 +1,11 @@
+name: qwen-3.6
+family: qwen
+revision: qwen3.6:35b
+quantization: ollama-default
+source: ollama-local
+context_length: 131072
+artifact_path: qwen3.6:35b
+notes:
+  - v1 lineup
+  - Reliability and practical-task comparison target
+  - Ollama tag qwen3.6:35b

@@ -1,0 +1,60 @@
+{
+  "name": "practical_structured_output_v1",
+  "category": "custom",
+  "version": "0.1.0",
+  "description": "Practical structured-output fixture for demo scenarios. Models must return valid JSON only and preserve the requested fields and values exactly.",
+  "notes": [
+    "Uses deterministic tasks with exact-match JSON scoring.",
+    "Designed for demo use rather than broad benchmark coverage."
+  ],
+  "tasks": [
+    {
+      "task_id": "pso-v1-001-ticket-priority",
+      "prompt": "Convert the request into JSON with keys issue_type, priority, needs_followup, and owner. Return JSON only.",
+      "context": "Customer report summary: issue_type incident. priority critical. Payments fail for all EU customers after checkout deploy. owner ops-oncall. needs_followup true.",
+      "reference": "{\"issue_type\":\"incident\",\"priority\":\"critical\",\"needs_followup\":true,\"owner\":\"ops-oncall\"}",
+      "tags": ["json", "triage"],
+      "metadata": {"expected_behavior": "json_exact_match"}
+    },
+    {
+      "task_id": "pso-v1-002-calendar-reminder",
+      "prompt": "Return JSON only with keys title, day, start, duration_min, and bring_laptop.",
+      "context": "Reminder: Demo rehearsal on Friday at 14:30 for 45 minutes. Title should be Spark Demo Rehearsal. bring_laptop true.",
+      "reference": "{\"title\":\"Spark Demo Rehearsal\",\"day\":\"Friday\",\"start\":\"14:30\",\"duration_min\":45,\"bring_laptop\":true}",
+      "tags": ["json", "calendar"],
+      "metadata": {"expected_behavior": "json_exact_match"}
+    },
+    {
+      "task_id": "pso-v1-003-order-line-items",
+      "prompt": "Return JSON only with keys customer_id and items, where items is an array of objects with sku and quantity.",
+      "context": "Create order payload for customer CUST-77. Items: SKU RTX-BOX qty 2, SKU CABLE-9 qty 5.",
+      "reference": "{\"customer_id\":\"CUST-77\",\"items\":[{\"sku\":\"RTX-BOX\",\"quantity\":2},{\"sku\":\"CABLE-9\",\"quantity\":5}]}",
+      "tags": ["json", "order-entry"],
+      "metadata": {"expected_behavior": "json_exact_match"}
+    },
+    {
+      "task_id": "pso-v1-004-bool-and-null",
+      "prompt": "Return JSON only with keys approved, approver, and reason.",
+      "context": "The expense was rejected. There is no approver assigned. Reason: missing receipt.",
+      "reference": "{\"approved\":false,\"approver\":null,\"reason\":\"missing receipt\"}",
+      "tags": ["json", "workflow"],
+      "metadata": {"expected_behavior": "json_exact_match"}
+    },
+    {
+      "task_id": "pso-v1-005-nested-summary",
+      "prompt": "Return JSON only with keys service, status, and metrics. metrics must contain ttft_ms and throughput_tps.",
+      "context": "Service: benchmark-api. Status: degraded. Metrics: TTFT 182 ms, throughput 73.5 tokens/s.",
+      "reference": "{\"service\":\"benchmark-api\",\"status\":\"degraded\",\"metrics\":{\"ttft_ms\":182,\"throughput_tps\":73.5}}",
+      "tags": ["json", "nested"],
+      "metadata": {"expected_behavior": "json_exact_match"}
+    },
+    {
+      "task_id": "pso-v1-006-simple-routing",
+      "prompt": "Return JSON only with keys route, notify, and tags.",
+      "context": "This is a billing question from a VIP account. Route to finance-escalation, notify account-manager, tags billing and vip.",
+      "reference": "{\"route\":\"finance-escalation\",\"notify\":\"account-manager\",\"tags\":[\"billing\",\"vip\"]}",
+      "tags": ["json", "routing"],
+      "metadata": {"expected_behavior": "json_exact_match"}
+    }
+  ]
+}

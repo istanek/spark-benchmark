@@ -1,0 +1,27 @@
+experiment:
+  name: spark-trt-v1-reliability
+  description: Spark-native reliability and practical outcome pass on TensorRT-LLM
+  platforms:
+    - spark
+  backend: trt-llm
+  backend_version: TODO-pin
+  models:
+    - qwen-3.6
+    - gemma-4
+    - nemotron-3
+    - nemotron-3-super
+  suites:
+    - hallucination_grounding
+    - abstention_under_uncertainty
+    - practical_coding_tasks
+    - practical_structured_output
+  sampling:
+    temperature: 0.0
+    top_p: 1.0
+    seed: 42
+    max_tokens: 2048
+  context_lengths:
+    - 4096
+    - 16384
+  repetitions: 3
+  warmup_runs: 1

@@ -1,0 +1,23 @@
+experiment:
+  name: spark-code-generation-v1
+  description: Spark-only code generation pass using the v1 HumanEval starter subset
+  platforms:
+    - spark
+  backend: ollama
+  backend_version: local
+  models:
+    - qwen-3.6
+    - gemma-4
+    - nemotron-3
+  suites:
+    - code_generation
+  sampling:
+    temperature: 0.0
+    top_p: 1.0
+    seed: 42
+    max_tokens: 512
+  context_lengths:
+    - 512
+    - 4096
+  repetitions: 1
+  warmup_runs: 0

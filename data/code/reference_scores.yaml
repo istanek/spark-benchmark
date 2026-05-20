@@ -1,0 +1,46 @@
+# Published pass@1 reference scores for code_generation suite validation.
+#
+# The runner compares each (model, benchmark) result against the entry below.
+# If the delta exceeds tolerance_pp (percentage points), a warning is emitted.
+#
+# IMPORTANT: every score should cite a source. Placeholder rows are clearly
+# marked and should not be treated as authoritative until updated.
+#
+# Scores are pass@1 in percent (0-100). The v1 fixture ships only 5 HumanEval
+# problems; until reference_scores have been updated with subset-specific
+# values OR the full 164-problem set is loaded, reference warnings are
+# expected to be noisy. Set `enforce: false` on a benchmark entry to suppress
+# the warning while keeping the comparison in reports.
+
+tolerance_pp: 3.0
+
+models:
+  qwen-3.6:
+    humaneval:
+      pass_at_1: null
+      source: "TODO - populate from official Qwen 3.6 model card / paper"
+      enforce: false
+    mbpp_sanitized:
+      pass_at_1: null
+      source: "TODO"
+      enforce: false
+
+  gemma-4:
+    humaneval:
+      pass_at_1: null
+      source: "TODO - populate from official Gemma 4 model card / paper"
+      enforce: false
+    mbpp_sanitized:
+      pass_at_1: null
+      source: "TODO"
+      enforce: false
+
+  nemotron-3:
+    humaneval:
+      pass_at_1: null
+      source: "TODO - populate from NVIDIA Nemotron-3 release notes"
+      enforce: false
+    mbpp_sanitized:
+      pass_at_1: null
+      source: "TODO"
+      enforce: false

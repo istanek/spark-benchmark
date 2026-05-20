@@ -1,0 +1,79 @@
+{
+  "name": "code_generation_v1",
+  "category": "quality",
+  "version": "0.1.0",
+  "description": "Canonical code generation benchmark fixture. v1 starter subset of HumanEval problems for pipeline validation. Extend to the full 164-problem set by appending the remaining problems from openai/human-eval (MIT) in this same schema.",
+  "notes": [
+    "Problems are taken verbatim from openai/human-eval (MIT-licensed).",
+    "task_id follows the canonical 'humaneval/N' or 'mbpp/N' convention so reference scores stay comparable.",
+    "Each task carries its test code in metadata.tests; the runner sandboxes generation+tests in a subprocess.",
+    "This v1 fixture is a starter subset for pipeline validation; reference-score warnings will fire if the configured reference is for the full 164-problem set. Use metadata.is_subset to suppress warnings, or update reference_scores.yaml with subset-specific values."
+  ],
+  "tasks": [
+    {
+      "task_id": "humaneval/0",
+      "prompt": "from typing import List\n\n\ndef has_close_elements(numbers: List[float], threshold: float) -> bool:\n    \"\"\" Check if in given list of numbers, are any two numbers closer to each other than\n    given threshold.\n    >>> has_close_elements([1.0, 2.0, 3.0], 0.5)\n    False\n    >>> has_close_elements([1.0, 2.8, 3.0, 4.0, 5.0, 2.0], 0.3)\n    True\n    \"\"\"\n",
+      "context": null,
+      "reference": null,
+      "tags": ["humaneval", "code", "list-processing"],
+      "metadata": {
+        "benchmark": "humaneval",
+        "entry_point": "has_close_elements",
+        "tests": "METADATA = {\n    'author': 'jt',\n    'dataset': 'test'\n}\n\n\ndef check(candidate):\n    assert candidate([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.3) == True\n    assert candidate([1.0, 2.0, 3.9, 4.0, 5.0, 2.2], 0.05) == False\n    assert candidate([1.0, 2.0, 5.9, 4.0, 5.0], 0.95) == True\n    assert candidate([1.0, 2.0, 5.9, 4.0, 5.0], 0.8) == False\n    assert candidate([1.0, 2.0, 3.0, 4.0, 5.0, 2.0], 0.1) == True\n    assert candidate([1.1, 2.2, 3.1, 4.1, 5.1], 1.0) == True\n    assert candidate([1.1, 2.2, 3.1, 4.1, 5.1], 0.5) == False\n\ncheck(has_close_elements)\n",
+        "canonical_solution": "    for idx, elem in enumerate(numbers):\n        for idx2, elem2 in enumerate(numbers):\n            if idx != idx2:\n                distance = abs(elem - elem2)\n                if distance < threshold:\n                    return True\n\n    return False\n"
+      }
+    },
+    {
+      "task_id": "humaneval/4",
+      "prompt": "from typing import List\n\n\ndef mean_absolute_deviation(numbers: List[float]) -> float:\n    \"\"\" For a given list of input numbers, calculate Mean Absolute Deviation\n    around the mean of this dataset.\n    Mean Absolute Deviation is the average absolute difference between each\n    element and a centerpoint (mean in this case):\n    MAD = average | x - x_mean |\n    >>> mean_absolute_deviation([1.0, 2.0, 3.0, 4.0])\n    1.0\n    \"\"\"\n",
+      "context": null,
+      "reference": null,
+      "tags": ["humaneval", "code", "math"],
+      "metadata": {
+        "benchmark": "humaneval",
+        "entry_point": "mean_absolute_deviation",
+        "tests": "METADATA = {\n    'author': 'jt',\n    'dataset': 'test'\n}\n\n\ndef check(candidate):\n    assert abs(candidate([1.0, 2.0, 3.0]) - 2.0/3.0) < 1e-4\n    assert abs(candidate([1.0, 2.0, 3.0, 4.0]) - 1.0) < 1e-4\n    assert abs(candidate([1.0, 2.0, 3.0, 4.0, 5.0]) - 6.0/5.0) < 1e-4\n\ncheck(mean_absolute_deviation)\n",
+        "canonical_solution": "    mean = sum(numbers) / len(numbers)\n    return sum(abs(x - mean) for x in numbers) / len(numbers)\n"
+      }
+    },
+    {
+      "task_id": "humaneval/7",
+      "prompt": "from typing import List\n\n\ndef filter_by_substring(strings: List[str], substring: str) -> List[str]:\n    \"\"\" Filter an input list of strings only for ones that contain given substring\n    >>> filter_by_substring([], 'a')\n    []\n    >>> filter_by_substring(['abc', 'bacd', 'cde', 'array'], 'a')\n    ['abc', 'bacd', 'array']\n    \"\"\"\n",
+      "context": null,
+      "reference": null,
+      "tags": ["humaneval", "code", "filter"],
+      "metadata": {
+        "benchmark": "humaneval",
+        "entry_point": "filter_by_substring",
+        "tests": "METADATA = {\n    'author': 'jt',\n    'dataset': 'test'\n}\n\n\ndef check(candidate):\n    assert candidate([], 'john') == []\n    assert candidate(['xxx', 'asd', 'xxy', 'john doe', 'xxxAAA', 'xxx'], 'xxx') == ['xxx', 'xxxAAA', 'xxx']\n    assert candidate(['xxx', 'asd', 'aaaxxy', 'john doe', 'xxxAAA', 'xxx'], 'xx') == ['xxx', 'aaaxxy', 'xxxAAA', 'xxx']\n    assert candidate(['grunt', 'trumpet', 'prune', 'gruesome'], 'run') == ['grunt', 'prune']\n\ncheck(filter_by_substring)\n",
+        "canonical_solution": "    return [x for x in strings if substring in x]\n"
+      }
+    },
+    {
+      "task_id": "humaneval/14",
+      "prompt": "from typing import List\n\n\ndef all_prefixes(string: str) -> List[str]:\n    \"\"\" Return list of all prefixes from shortest to longest of the input string\n    >>> all_prefixes('abc')\n    ['a', 'ab', 'abc']\n    \"\"\"\n",
+      "context": null,
+      "reference": null,
+      "tags": ["humaneval", "code", "string"],
+      "metadata": {
+        "benchmark": "humaneval",
+        "entry_point": "all_prefixes",
+        "tests": "METADATA = {\n    'author': 'jt',\n    'dataset': 'test'\n}\n\n\ndef check(candidate):\n    assert candidate('') == []\n    assert candidate('asdfgh') == ['a', 'as', 'asd', 'asdf', 'asdfg', 'asdfgh']\n    assert candidate('WWW') == ['W', 'WW', 'WWW']\n\ncheck(all_prefixes)\n",
+        "canonical_solution": "    result = []\n\n    for i in range(len(string)):\n        result.append(string[:i+1])\n    return result\n"
+      }
+    },
+    {
+      "task_id": "humaneval/55",
+      "prompt": "\ndef fib(n: int):\n    \"\"\"Return n-th Fibonacci number.\n    >>> fib(10)\n    55\n    >>> fib(1)\n    1\n    >>> fib(8)\n    21\n    \"\"\"\n",
+      "context": null,
+      "reference": null,
+      "tags": ["humaneval", "code", "recursion"],
+      "metadata": {
+        "benchmark": "humaneval",
+        "entry_point": "fib",
+        "tests": "METADATA = {}\n\n\ndef check(candidate):\n    assert candidate(10) == 55\n    assert candidate(1) == 1\n    assert candidate(8) == 21\n    assert candidate(11) == 89\n    assert candidate(12) == 144\n\ncheck(fib)\n",
+        "canonical_solution": "    if n == 0:\n        return 0\n    if n == 1:\n        return 1\n    return fib(n - 1) + fib(n - 2)\n"
+      }
+    }
+  ]
+}

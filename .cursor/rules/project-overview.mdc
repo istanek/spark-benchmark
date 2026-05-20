@@ -1,0 +1,48 @@
+---
+description: spark-benchmark project overview, scope, and how to run things
+alwaysApply: true
+---
+
+# spark-benchmark
+
+Reproducible local-LLM benchmark harness for **NVIDIA DGX Spark only** (v1).
+v1 is intentionally Spark-only — never frame results as cross-platform comparisons.
+
+## v1 lineup (canonical)
+
+- `qwen-3.6` (Ollama tag `qwen3.6:35b`)
+- `gemma-4` (Ollama tag `gemma4:31b`)
+- `nemotron-3` (Ollama tag `nemotron3:33b`)
+- `nemotron-3-super` is **retired** — its YAML is a tombstone, do not re-add it.
+
+## Production backend
+
+Ollama HTTP at `http://localhost:11434/api/generate`. `llamacpp` adapter exists; `trt-llm` / `vllm` are stubs.
+
+## Run commands (always with `PYTHONPATH=src`)
+
+```bash
+PYTHONPATH=src python3 -m spark_benchmark.cli wizard \
+  --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark
+
+PYTHONPATH=src python3 -m spark_benchmark.cli benchmark \
+  otestuj qwen gemma nemotron zamer se na rychlost spolehlivost \
+  --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark
+```
+
+NL parser understands Czech + English keywords (`rychlost`/`speed`,
+`spolehliv`/`reliab`, `kod`/`code`, `dlouhodob`/`sustained`, `openclaw`).
+
+## Results layout (do not change shape lightly)
+
+```
+results/benchmarks/<run-id>/
+├─ plan.json
+└─ <suite>/{manifest.json, results.jsonl, summary.json, summary.md}
+```
+
+Run IDs come from `results_bundle.make_run_id()` (`YYYYMMDDTHHMMSSZ-<8hex>`).
+
+For full module map see `docs/architecture.md`. For planned suites see
+`docs/extensions-spec.md`. Methodology lives in `METHODOLOGY.md` — keep it
+honest: publish failures, not just wins.

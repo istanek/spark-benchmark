@@ -1,0 +1,10 @@
+name: llamacpp
+entrypoint: llama-cli
+version: b4234
+transport: subprocess
+executable: llama-cli
+default_args: []
+options:
+  mode: cli
+notes:
+  - Shared baseline backend for reproducible Spark model-to-model comparisons

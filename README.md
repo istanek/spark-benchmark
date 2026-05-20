@@ -1,93 +1,60 @@
-# SPARK Benchmark
+# spark-benchmark
 
+Reproducible local LLM benchmark harness for evaluating model behavior on NVIDIA DGX Spark.
 
+## v1 focus
 
-## Getting started
+Version 1 is intentionally Spark-only. The goal is to compare model variants on the same machine, not to do cross-platform marketing-style comparisons.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+Headline priorities for v1:
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- reliable, re-runnable experiment definitions from YAML
+- Spark-native backend coverage, starting with shared and native backends
+- classical benchmark signals plus practical reliability and hallucination checks
+- public-ready raw outputs, methodology, and reports
 
-## Add your files
+Initial v1 lineup:
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+- qwen-3.6
+- gemma-4
+- nemotron-3
 
-```
-cd existing_repo
-git remote add origin https://gitlab.com/istanek/spark-benchmark.git
-git branch -M main
-git push -uf origin main
-```
+## Quick start
 
-## Integrate with your tools
+Interactive console:
 
-* [Set up project integrations](https://gitlab.com/istanek/spark-benchmark/-/settings/integrations)
+- `cd ~/.openclaw/workspace/spark-benchmark`
+- `PYTHONPATH=src python3 -m spark_benchmark.cli console --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark`
 
-## Collaborate with your team
+Optional model override:
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+- `PYTHONPATH=src python3 -m spark_benchmark.cli console --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark --model gemma-4`
 
-## Test and Deploy
+Natural-language benchmark orchestration:
 
-Use the built-in continuous integration in GitLab.
+- `PYTHONPATH=src python3 -m spark_benchmark.cli benchmark otestuj qwen gemma nemotron zamer se na rychlost spolehlivost a openclaw structured output --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark`
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+Interactive benchmark wizard:
 
-***
+- `PYTHONPATH=src python3 -m spark_benchmark.cli wizard --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark`
+- Use arrow keys to move, `Space` to toggle a model or suite, and `Enter` to continue.
 
-# Editing this README
+## Current scaffold includes
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+- repository structure
+- validated YAML config loading via Pydantic
+- CLI with run, aggregate, report, and dashboard commands
+- backend and telemetry base interfaces
+- Spark-only sample experiment, platform, backend, and model configs
+- first working reliability suite runner: `spark-bench run --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark --run-suite hallucination_grounding` loads `data/reliability/hallucination_grounding_v1.json`, runs every task against every configured model, writes one row per (model, task) to `results.jsonl`, and emits `summary.json` + `summary.md` with per-model pass rates using simple heuristics for `answer_from_context`, `abstain`, and `correct_user`
+- code generation suite (`--run-suite code_generation`): canonical HumanEval-style problems with sandboxed execution (`subprocess` + `resource.setrlimit` + timeout) and pass@k unbiased estimator; reference-score validator at `data/code/reference_scores.yaml` emits warnings when results drift from published baselines. See `docs/extensions-spec.md` for the full long-context / sustained-throughput / code-generation extension plan
+- placeholder suite structure for quality, performance, reliability, and practical task checks
 
-## Suggestions for a good README
+## Planned v1 suite mix
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+- quality: conventional evals and correctness-oriented tasks
+- performance: throughput, TTFT, context scaling, sustained generation
+- reliability: hallucination probes, unsupported-claim handling, abstention behavior
+- practical: tool-like structured outputs and real-world task outcomes
 
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+This is still an early Phase 1 implementation, not a full benchmark implementation yet.

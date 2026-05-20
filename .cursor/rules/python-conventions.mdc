@@ -1,0 +1,60 @@
+---
+description: Python conventions for spark-benchmark source and tests
+globs: src/spark_benchmark/**/*.py,tests/**/*.py
+alwaysApply: false
+---
+
+# Python conventions
+
+- Python ≥ 3.11. Use `from __future__ import annotations` in new modules.
+- Pydantic v2 only (`BaseModel`, `Field`, `model_validator(mode="after")`).
+- Runtime deps are minimal on purpose: `pydantic`, `pyyaml`, `typer`, `rich`. Don't add a dep without clearing it first.
+
+## Suite runner shape (must match)
+
+Every suite runner has the same signature and per-row contract:
+
+```python
+def run_<name>_suite(
+    *,
+    run_dir: Path,
+    suite: SuiteDefinition,
+    backend: Any,
+    backend_config: BackendConfig,
+    model_configs: list[ModelConfig],
+    sampling: SamplingConfig,
+    progress_callback: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    for model_config in model_configs:
+        backend.load_model(model_config)
+        for task in suite.tasks:
+            generation = backend.generate(prompt, sampling)
+            evaluation = score_<...>(task, generation.output)
+            write_result(run_dir, row)  # appends one JSON line to results.jsonl
+        backend.unload()  # critical for Ollama to free VRAM (keep_alive=0)
+    summary = build_summary(...)
+    write_json(run_dir / "summary.json", summary)
+    return summary
+```
+
+When you add a new suite, also wire it in:
+1. `orchestration.run_benchmark_bundle` (dispatch),
+2. `shell.SUITE_REGISTRY` (TUI label + data path),
+3. `orchestration.parse_benchmark_request` (NL keywords).
+
+## Error handling
+
+- Backend adapters raise `RuntimeError` with the HTTP body / stderr — never silently swallow.
+- `code_generation.sandbox_run` must keep `subprocess + setrlimit + timeout`. Never run generated code in-process.
+- Telemetry degrades gracefully (`pynvml` → `nvidia-smi` → `none`); a missing GPU library is not an error.
+
+## Tests
+
+Tests are plain-python and runnable both ways:
+
+```bash
+python3 tests/test_orchestration.py    # standalone _run_all
+pytest tests/                          # also fine
+```
+
+Keep that dual-mode pattern when adding new tests.

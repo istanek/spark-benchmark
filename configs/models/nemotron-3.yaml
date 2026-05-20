@@ -1,0 +1,11 @@
+name: nemotron-3
+family: nemotron
+revision: nemotron3:33b
+quantization: ollama-default
+source: ollama-local
+context_length: 131072
+artifact_path: nemotron3:33b
+notes:
+  - v1 lineup
+  - Reliability and practical-task comparison target
+  - Ollama tag nemotron3:33b

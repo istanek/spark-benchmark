@@ -1,0 +1,84 @@
+{
+  "name": "hallucination_grounding_v1",
+  "category": "reliability",
+  "version": "0.2.0",
+  "description": "Grounded-vs-hallucination reliability fixture. Models must answer strictly from the supplied context, abstain when evidence is missing, and reject false premises by citing the context.",
+  "notes": [
+    "Expanded demo fixture for v1 reliability reporting.",
+    "Covers grounded lookup, abstention under missing evidence, and correction of false user claims."
+  ],
+  "tasks": [
+    {
+      "task_id": "hg-v1-001-grounded-answer-year",
+      "prompt": "Based only on the context, what year was the Atlas-3 satellite launched?",
+      "context": "Atlas-3 was assembled in 2018 and launched into low Earth orbit in 2019. It was decommissioned in 2023.",
+      "reference": "2019",
+      "tags": ["grounded", "fact-lookup"],
+      "metadata": {"difficulty": "easy", "expected_behavior": "answer_from_context"}
+    },
+    {
+      "task_id": "hg-v1-002-abstain-lead-engineer",
+      "prompt": "Based only on the context, who was the lead engineer of the Atlas-3 project?",
+      "context": "Atlas-3 was assembled in 2018 and launched into low Earth orbit in 2019. It was decommissioned in 2023.",
+      "reference": "The context does not mention the lead engineer.",
+      "tags": ["abstention", "missing-evidence"],
+      "metadata": {"difficulty": "medium", "expected_behavior": "abstain"}
+    },
+    {
+      "task_id": "hg-v1-003-reject-false-premise-launch-year",
+      "prompt": "The user claims Atlas-3 was launched in 2020. Is that consistent with the context?",
+      "context": "Atlas-3 was assembled in 2018 and launched into low Earth orbit in 2019.",
+      "reference": "No, the context states Atlas-3 was launched in 2019, not 2020.",
+      "tags": ["contradiction", "grounded"],
+      "metadata": {"difficulty": "medium", "expected_behavior": "correct_user"}
+    },
+    {
+      "task_id": "hg-v1-004-grounded-answer-location",
+      "prompt": "Based only on the context, where is the Kappa battery plant located?",
+      "context": "The Kappa battery plant is located in Ostrava. It opened its second assembly line in March 2024 and employs 420 people.",
+      "reference": "Ostrava",
+      "tags": ["grounded", "entity"],
+      "metadata": {"difficulty": "easy", "expected_behavior": "answer_from_context"}
+    },
+    {
+      "task_id": "hg-v1-005-abstain-plant-owner",
+      "prompt": "Based only on the context, who owns the Kappa battery plant?",
+      "context": "The Kappa battery plant is located in Ostrava. It opened its second assembly line in March 2024 and employs 420 people.",
+      "reference": "The context does not say who owns the Kappa battery plant.",
+      "tags": ["abstention", "missing-evidence"],
+      "metadata": {"difficulty": "easy", "expected_behavior": "abstain"}
+    },
+    {
+      "task_id": "hg-v1-006-reject-false-premise-headcount",
+      "prompt": "The user says the Kappa battery plant employs 520 people. Is that supported by the context?",
+      "context": "The Kappa battery plant is located in Ostrava. It opened its second assembly line in March 2024 and employs 420 people.",
+      "reference": "No, the context says the plant employs 420 people, not 520.",
+      "tags": ["contradiction", "numeric-grounding"],
+      "metadata": {"difficulty": "medium", "expected_behavior": "correct_user"}
+    },
+    {
+      "task_id": "hg-v1-007-grounded-answer-version",
+      "prompt": "Based only on the context, which firmware version fixed the reboot issue?",
+      "context": "In the April validation report, firmware 2.3.1 fixed the reboot issue on the Delta router, while version 2.3.0 still reproduced the crash after 40 minutes.",
+      "reference": "2.3.1",
+      "tags": ["grounded", "versioning"],
+      "metadata": {"difficulty": "easy", "expected_behavior": "answer_from_context"}
+    },
+    {
+      "task_id": "hg-v1-008-abstain-missing-author",
+      "prompt": "Based only on the context, who wrote the April validation report?",
+      "context": "In the April validation report, firmware 2.3.1 fixed the reboot issue on the Delta router, while version 2.3.0 still reproduced the crash after 40 minutes.",
+      "reference": "The context does not identify the author of the report.",
+      "tags": ["abstention", "missing-evidence"],
+      "metadata": {"difficulty": "medium", "expected_behavior": "abstain"}
+    },
+    {
+      "task_id": "hg-v1-009-reject-false-premise-fixed-version",
+      "prompt": "Someone claims firmware 2.3.0 fixed the reboot issue. Does the context support that claim?",
+      "context": "In the April validation report, firmware 2.3.1 fixed the reboot issue on the Delta router, while version 2.3.0 still reproduced the crash after 40 minutes.",
+      "reference": "No, the context says firmware 2.3.1 fixed the issue and 2.3.0 still crashed.",
+      "tags": ["contradiction", "versioning"],
+      "metadata": {"difficulty": "medium", "expected_behavior": "correct_user"}
+    }
+  ]
+}

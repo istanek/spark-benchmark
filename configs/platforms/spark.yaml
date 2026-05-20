@@ -1,0 +1,10 @@
+name: spark
+display_name: NVIDIA DGX Spark
+architecture: nvidia-arm
+os: ubuntu
+telemetry:
+  - nvml
+  - dcgm
+notes:
+  - Single Spark target for v1
+  - Baseline telemetry source for throughput, memory, and efficiency reporting

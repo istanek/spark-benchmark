@@ -1,0 +1,11 @@
+name: ollama
+entrypoint: http://localhost:11434
+version: local
+transport: http
+executable:
+default_args: []
+options:
+  endpoint: http://localhost:11434/api/generate
+  request_timeout_s: 300
+notes:
+  - Local Ollama HTTP backend, talks to /api/generate

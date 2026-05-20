@@ -1,0 +1,36 @@
+{
+  "name": "openclaw_speed_v1",
+  "category": "performance",
+  "version": "0.1.0",
+  "description": "Short prompt set for measuring TTFT and decode speed on OpenClaw-like tasks.",
+  "notes": [
+    "No pass/fail grading. The purpose is consistent latency and throughput capture.",
+    "Prompts are intentionally short to medium so model comparisons stay practical on one machine."
+  ],
+  "tasks": [
+    {
+      "task_id": "speed-v1-001-brief-answer",
+      "prompt": "Explain in one short paragraph what DGX Spark is and why someone would benchmark local LLMs on it.",
+      "context": null,
+      "reference": null,
+      "tags": ["speed", "brief-answer"],
+      "metadata": {"expected_behavior": "performance_probe"}
+    },
+    {
+      "task_id": "speed-v1-002-structured-summary",
+      "prompt": "Return a compact JSON object with keys task, urgency, and next_step for this note.",
+      "context": "User says a benchmark demo is on Friday, latency is unstable, and the next step is to compare qwen, gemma, and nemotron on the same machine.",
+      "reference": null,
+      "tags": ["speed", "json"],
+      "metadata": {"expected_behavior": "performance_probe"}
+    },
+    {
+      "task_id": "speed-v1-003-agent-workflow",
+      "prompt": "List three concrete steps an OpenClaw-like agent should do next.",
+      "context": "Inbox contains one urgent billing email, one calendar conflict tomorrow at 10:00, and one low-priority newsletter.",
+      "reference": null,
+      "tags": ["speed", "agent"],
+      "metadata": {"expected_behavior": "performance_probe"}
+    }
+  ]
+}

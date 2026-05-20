@@ -1,0 +1,9 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+
+class TelemetryCollector(Protocol):
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
+    def snapshot(self) -> dict[str, object]: ...

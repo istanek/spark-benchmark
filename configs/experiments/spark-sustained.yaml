@@ -1,0 +1,22 @@
+experiment:
+  name: spark-sustained-v1
+  description: Spark-only sustained-throughput probe; 5-minute decode soak per model with NVML telemetry
+  platforms:
+    - spark
+  backend: ollama
+  backend_version: local
+  models:
+    - qwen-3.6
+    - gemma-4
+    - nemotron-3
+  suites:
+    - sustained_throughput
+  sampling:
+    temperature: 0.0
+    top_p: 1.0
+    seed: 42
+    max_tokens: 1024
+  context_lengths:
+    - 4096
+  repetitions: 1
+  warmup_runs: 1

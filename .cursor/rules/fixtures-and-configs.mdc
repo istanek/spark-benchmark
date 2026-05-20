@@ -1,0 +1,56 @@
+---
+description: Suite fixtures (data/) and YAML configs (configs/) conventions
+globs: data/**/*.json,data/**/*.yaml,configs/**/*.yaml
+alwaysApply: false
+---
+
+# Fixtures and configs
+
+## Suite fixtures (`data/<category>/<name>_v<n>.json`)
+
+Validated through `SuiteDefinition` (see `src/spark_benchmark/suites.py`):
+
+```json
+{
+  "name": "...",
+  "category": "reliability | performance | quality | custom",
+  "version": "0.1.0",
+  "description": "...",
+  "tasks": [
+    {
+      "task_id": "...",
+      "prompt": "...",
+      "context": "... or null",
+      "reference": "... or null",
+      "tags": ["..."],
+      "metadata": { "expected_behavior": "..." }
+    }
+  ]
+}
+```
+
+`metadata.expected_behavior` is the contract with the scorers — must be one of:
+
+| Value | Suite | Scorer |
+|---|---|---|
+| `answer_from_context` | hallucination_grounding | reference / token-overlap match |
+| `abstain` | hallucination_grounding | matches `ABSTAIN_PHRASES` |
+| `correct_user` | hallucination_grounding | negation + reference present |
+| `json_exact_match` | practical_structured_output | parsed JSON equals reference |
+| `performance_probe` | openclaw_speed | every row counts as pass |
+| `sustained_throughput_probe` | sustained_throughput | every row counts as pass |
+| (humaneval / mbpp) | code_generation | requires `entry_point` + `tests` in metadata |
+
+HumanEval / MBPP problems must keep canonical `task_id` (`humaneval/N`, `mbpp/N`)
+so reference scores in `data/code/reference_scores.yaml` line up.
+
+## Configs (`configs/`)
+
+- `experiments/*.yaml` — `experiment.backend` must match a `configs/backends/<name>.yaml`; every name in `experiment.models` must have a matching `configs/models/<name>.yaml`.
+- `models/*.yaml` — for `ollama` backend, `artifact_path` is the **Ollama tag** (e.g. `qwen3.6:35b`); for `llamacpp`, it's a path to a local **GGUF** file.
+- `platforms/spark.yaml` — only Spark in v1.
+- For Ollama-served models you can skip the YAML entirely; the TUI auto-detects them from `/api/tags` and synthesizes a `ModelConfig` (vision / embedding tags get greyed out, never benchmarked).
+
+When adding a new model: pin sampling and aliasing in the NL parser
+(`orchestration.parse_benchmark_request` — `alias_map`) so users can write the
+short name in a sentence.

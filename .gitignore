@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.Python
+build/
+dist/
+develop-eggs/
+.eggs/
+.installed.cfg
+*.so
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+
+# Type checkers
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Benchmark output (committing report templates is fine; raw runs aren't)
+results/runs/
+results/benchmarks/
+**/results.jsonl
+
+# Local secrets / overrides
+.env
+.env.local
+*.pem
+*.key

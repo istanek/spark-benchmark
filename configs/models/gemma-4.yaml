@@ -1,0 +1,11 @@
+name: gemma-4
+family: gemma
+revision: gemma4:31b
+quantization: ollama-default
+source: ollama-local
+context_length: 131072
+artifact_path: gemma4:31b
+notes:
+  - v1 lineup
+  - Reliability and practical-task comparison target
+  - Ollama tag gemma4:31b

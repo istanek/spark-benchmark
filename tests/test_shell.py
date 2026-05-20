@@ -1,0 +1,134 @@
+from spark_benchmark.models import BackendConfig, BackendKind, ModelConfig
+from spark_benchmark.shell import (
+    SUITE_REGISTRY,
+    DetectedOllamaModel,
+    ShellContext,
+    classify_models,
+    is_embedding_model,
+    is_vision_model,
+    load_default_context,
+    load_suite_metadata,
+)
+
+
+def _make_model(name: str, tag: str) -> ModelConfig:
+    return ModelConfig(
+        name=name,
+        family=name.split("-")[0],
+        revision=tag,
+        quantization="ollama-default",
+        source="ollama-local",
+        context_length=4096,
+        artifact_path=tag,
+    )
+
+
+def _detected(tag: str, family: str = "", families: tuple[str, ...] = ()) -> DetectedOllamaModel:
+    return DetectedOllamaModel(tag=tag, family=family, families=families)
+
+
+def test_classify_models_disables_embedding_and_vision_extras() -> None:
+    ctx = ShellContext(
+        repo_root=load_default_context().repo_root,
+        experiment=load_default_context().experiment,
+        platform=load_default_context().platform,
+        backend_config=BackendConfig(
+            name=BackendKind.OLLAMA,
+            entrypoint="ollama",
+            version="local",
+            transport="http",
+            options={"endpoint": "http://localhost:11434/api/generate"},
+        ),
+        model_configs=[_make_model("qwen-3.6", "qwen3.6:35b"), _make_model("gemma-4", "gemma4:31b")],
+    )
+    detected = [
+        _detected("qwen3.6:35b", family="qwen35moe"),
+        _detected("bge-m3:latest", family="bert"),
+        _detected("nomic-embed-text:latest", family="nomic-bert"),
+        _detected("qwen3-vl:30b", family="qwen3vlmoe"),
+    ]
+    classified = classify_models(ctx, detected)
+
+    by_tag = {item.tag: item for item in classified}
+    assert by_tag["qwen3.6:35b"].has_config
+    assert by_tag["qwen3.6:35b"].auto_detected is False
+    assert by_tag["bge-m3:latest"].has_config is False
+    assert by_tag["bge-m3:latest"].disable_reason == "embedding model"
+    assert by_tag["nomic-embed-text:latest"].disable_reason == "embedding model"
+    assert by_tag["qwen3-vl:30b"].disable_reason == "vision model"
+    assert "gemma4:31b" not in by_tag, "configured model not in Ollama should not be returned"
+
+
+def test_classify_models_auto_synthesizes_non_vision_extras() -> None:
+    ctx = ShellContext(
+        repo_root=load_default_context().repo_root,
+        experiment=load_default_context().experiment,
+        platform=load_default_context().platform,
+        backend_config=BackendConfig(
+            name=BackendKind.OLLAMA, entrypoint="ollama", version="local", transport="http"
+        ),
+        model_configs=[],
+    )
+    detected = [
+        _detected("z-model:8b", family="llama"),
+        _detected("a-model:7b", family="llama"),
+        _detected("m-model:4b", family="llama"),
+    ]
+    classified = classify_models(ctx, detected)
+    assert [item.tag for item in classified] == ["a-model:7b", "m-model:4b", "z-model:8b"]
+    assert all(item.has_config for item in classified)
+    assert all(item.auto_detected for item in classified)
+    # Auto-synthesized configs carry the Ollama tag as artifact_path.
+    assert classified[0].config is not None
+    assert classified[0].config.artifact_path == "a-model:7b"
+
+
+def test_vision_and_embedding_detectors() -> None:
+    assert is_vision_model(_detected("qwen3-vl:30b", family="qwen3vlmoe"))
+    assert is_vision_model(_detected("hf.co/x/pixtral-12b:Q4", family="llama"))
+    assert is_vision_model(_detected("llava:13b", family="llama"))
+    assert not is_vision_model(_detected("qwen3.6:35b", family="qwen35moe"))
+
+    assert is_embedding_model(_detected("bge-m3:latest", family="bert"))
+    assert is_embedding_model(_detected("nomic-embed-text:latest", family="nomic-bert"))
+    assert not is_embedding_model(_detected("gpt-oss:120b", family="gptoss"))
+
+
+def test_load_suite_metadata_returns_expected_fields() -> None:
+    ctx = load_default_context()
+    for name in SUITE_REGISTRY:
+        meta = load_suite_metadata(ctx.repo_root, name)
+        assert meta is not None, f"suite metadata missing for {name}"
+        assert meta.get("name")
+        assert meta.get("description")
+        assert isinstance(meta.get("tasks"), list)
+        assert len(meta["tasks"]) > 0
+
+
+def test_load_suite_metadata_unknown_suite_returns_none() -> None:
+    ctx = load_default_context()
+    assert load_suite_metadata(ctx.repo_root, "no_such_suite") is None
+
+
+def _run_all() -> int:
+    import inspect
+    import sys
+
+    failures: list[str] = []
+    module = sys.modules[__name__]
+    for name, fn in inspect.getmembers(module, inspect.isfunction):
+        if not name.startswith("test_"):
+            continue
+        try:
+            fn()
+            print(f"ok  {name}")
+        except Exception as exc:  # noqa: BLE001
+            failures.append(f"{name}: {exc!r}")
+            print(f"FAIL {name}: {exc!r}")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(_run_all())

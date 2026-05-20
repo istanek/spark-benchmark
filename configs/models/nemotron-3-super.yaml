@@ -1,0 +1,12 @@
+# RETIRED: not in v1 confirmed lineup. Kept as a tombstone so config loader still
+# parses if someone references it accidentally. The v1 lineup is qwen-3.6, gemma-4,
+# nemotron-3 only (see configs/models/ siblings and configs/experiments/spark-ollama-baseline.yaml).
+name: nemotron-3-super
+family: nemotron
+revision: retired
+quantization: retired
+source: retired
+context_length: 0
+artifact_path:
+notes:
+  - retired from v1 lineup
