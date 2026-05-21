@@ -126,6 +126,40 @@ plus model aliases (`qwen` → `qwen-3.6`, `gemma` → `gemma-4`, `nemotron`
 → `nemotron-3`). Pass `--allow-auto-detected` to also route to any
 non-curated Ollama tag by its slugified name (`phi4:14b` → `phi4-14b`).
 
+### `spark-bench run-custom` — bring your own test
+
+Mode A custom suites: drop a YAML file with your prompts, point the CLI
+at it, and get a side-by-side comparison across whatever models you
+have in Ollama.
+
+```bash
+PYTHONPATH=src python3 -m spark_benchmark.cli run-custom \
+  examples/custom-tests/quick/suite.yaml \
+  --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark
+```
+
+What you get under `results/custom/<slug>/<run-id>/`:
+
+- `manifest.json` (tagged `kind: "custom"` so reports keep custom runs
+  visually distinct from canonical numbers),
+- `results.jsonl` (one row per `(model, task_id)`, with per-call
+  telemetry; resume-friendly — rerun against the same `--output-dir`
+  and the runner skips already-done pairs),
+- `summary.md` (per-model telemetry table at the top, then one section
+  per task with each model's reply rendered as a fenced block),
+- `summary.json` (machine-readable aggregates).
+
+`run-custom` defaults to `--allow-auto-detected` because the user
+explicitly opted in to a non-canonical workload. A bare
+`spark-bench validate-custom path/to/suite.yaml` checks the schema
+without running anything (catches duplicate task IDs, empty prompts,
+unknown model references, the not-yet-implemented `mode: scored`).
+There is no scoring in v0.2.0 — `quick` mode is pass-through only. See
+`docs/custom-tests-spec.md` for the v0.3.0+ roadmap that adds
+deterministic scorers, sandboxed custom-Python scorers, and a local
+LLM-as-judge.
+
 ### What `--allow-auto-detected` actually does
 
 All four CLI surfaces share `model_registry.resolve_runnable_models`:
@@ -169,6 +203,7 @@ All tests are plain-python — runnable both as `pytest tests/` and as
 | `tests/test_code_generation.py` | `pass@k` unbiased estimator (edge cases + bad input); code extraction (markdown fence, inline `def`, raw continuation); sandboxed `subprocess + setrlimit` runs (pass / assertion failure / syntax error / wall-clock timeout); every fixture's `canonical_solution` actually passes the sandbox; reference-score validation (within / outside tolerance, missing expected) |
 | `tests/test_shell.py` | Curses-shell classifier surface — `classify_models(ShellContext, …)` backwards-compat wrapper, `SUITE_REGISTRY` ↔ fixture wiring sanity |
 | `tests/test_model_registry.py` | Shared model registry — `slugify_tag` / `synthesize_model_config` defaults, `classify_detected` filtering (vision / embedding / auto-synth), `resolve_runnable_models` with and without `--allow-auto-detected` (collisions skip auto entries), `find_config_by_name_or_tag` lookup order |
+| `tests/test_custom_suites.py` | Custom (BYOT) suites — Pydantic validation (duplicate IDs, empty prompts, empty tasks), YAML / JSON loaders, soft validation (long prompts, bad sampling, unknown models, `mode: scored` rejection), end-to-end runner with resume + error recording, summary aggregation, Markdown rendering, `slugify_suite_name` |
 | `tests/test_sustained_throughput.py` | `compute_windows` slices generations into wall-clock buckets; `compute_derived_metrics` reports `initial / sustained / peak tokens_per_s`, `throttle_ratio`, `time_to_throttle_s`, `avg_power_w`, `peak_temp_c`, `energy_j_per_token` |
 
 Run them all:

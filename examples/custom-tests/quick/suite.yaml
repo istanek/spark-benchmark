@@ -1,0 +1,61 @@
+name: example-quick-test
+version: "0.1"
+description: |
+  Tiny side-by-side comparison example. Drop your own prompts in here,
+  point `spark-bench run-custom` at this file, and you're benchmarking
+  whatever models you have in Ollama.
+
+# Mode A — pass-through, no scoring. Mode B ("scored") ships in v0.3.0.
+mode: quick
+
+# Optional default model lineup. Override on the CLI with
+# `--models qwen-3.6,gemma-4` or pass --no-allow-auto-detected to stick
+# strictly to the experiment YAML.
+models:
+  - qwen-3.6
+  - gemma-4
+
+# Default sampling for every task. Per-task overrides go inside each task.
+sampling:
+  temperature: 0.0
+  top_p: 1.0
+  seed: 42
+  max_tokens: 512
+
+tasks:
+  - task_id: czech_idiom
+    prompt: |
+      Translate this English idiom to Czech, then briefly explain the
+      meaning in one sentence:
+
+      "The early bird catches the worm."
+    tags: [translation, czech]
+
+  - task_id: structured_intent
+    prompt: |
+      Extract the intent from this customer support message and respond
+      with JSON only — no markdown, no prose. Keys: intent, urgency,
+      product.
+
+      Message: "My printer stopped working after the last firmware
+      update. I have a deadline today."
+    sampling:
+      temperature: 0.0
+      max_tokens: 256
+    tags: [json, structured]
+
+  - task_id: code_smell
+    prompt: |
+      Read this Python snippet and list, in plain English, every code
+      smell or correctness issue you can spot. One bullet per issue.
+
+      ```python
+      def get_user(id):
+          users = open("users.json").read()
+          for u in eval(users):
+              if u["id"] == id:
+                  return u
+      ```
+    sampling:
+      max_tokens: 1024
+    tags: [code, review]

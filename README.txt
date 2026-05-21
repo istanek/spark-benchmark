@@ -66,7 +66,7 @@ model in turn, runs every test, and gives you a side-by-side table.
   How do I actually run it?
 --------------------------------------------------------------------------------
 
-You have four ways to use the tool. Pick whichever fits how you like to
+You have five ways to use the tool. Pick whichever fits how you like to
 work.
 
 
@@ -128,7 +128,29 @@ work.
                         --model phi4:14b
 
 
-  Way 4 — describe what you want in a sentence
+  Way 4 — bring your own test
+  ---------------------------
+
+    spark-bench run-custom examples/custom-tests/quick/suite.yaml \
+                           --experiment configs/experiments/spark-ollama-baseline.yaml \
+                           --platform spark
+
+  This is the path for "I have my own prompts and I want to see how
+  the models I have actually do on them." Drop a YAML file like the
+  one in examples/custom-tests/quick/, list your prompts, and the
+  harness runs each prompt against each model and writes a
+  side-by-side Markdown report you can read on screen.
+
+  No scoring in v0.2.0 — Mode A just shows the answers and how fast
+  each model produced them. Scoring (was the answer correct? did the
+  JSON match? did the code compile?) ships in v0.3.0; see
+  docs/custom-tests-spec.md for the roadmap.
+
+  Useful when the canonical benchmarks don't ask the question you
+  actually care about.
+
+
+  Way 5 — describe what you want in a sentence
   --------------------------------------------
 
     spark-bench benchmark otestuj qwen a gemma na rychlost a spolehlivost \
@@ -183,6 +205,14 @@ Five test suites, all working today:
                     thermal throttling and reports tokens/sec at the
                     start versus at the end, peak GPU temperature, and
                     energy per token.
+
+  Custom (BYOT)     Your own prompts, your own model lineup. No
+                    scoring in v0.2.0 — Mode A is pass-through only:
+                    each prompt is sent to each model, telemetry is
+                    captured, and you get a side-by-side report you
+                    read on screen. Scoring (correctness, JSON
+                    schema match, custom Python validators, local
+                    LLM-as-judge) ships in v0.3.0 and later.
 
 
 --------------------------------------------------------------------------------
@@ -247,6 +277,12 @@ Nothing is uploaded anywhere. The results stay on your machine.
   docs/extensions-spec.md
                         The full spec for long-context, sustained
                         throughput, and code generation suites.
+
+  docs/custom-tests-spec.md
+                        Bring-Your-Own-Test (BYOT) subsystem. v0.2.0
+                        ships Mode A; the doc covers the roadmap to
+                        v0.3.0+ (deterministic scorers, sandboxed
+                        custom Python, local-only judge).
 
   CONTRIBUTING.md       Workflow, conventions, and how to cut a
                         release.

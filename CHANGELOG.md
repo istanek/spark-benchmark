@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Bring-Your-Own-Test (BYOT) subsystem — Mode A.** New
+  `spark_benchmark.custom_suites` module with a YAML / JSON suite
+  format (`CustomSuiteDefinition`), a Pydantic-validated loader,
+  resume-friendly runner that records errors per `(model, task)` pair
+  without aborting, side-by-side Markdown summary, and a
+  ``slugify_suite_name`` helper for run-bundle naming.
+- **CLI commands `spark-bench run-custom` and `spark-bench validate-custom`.**
+  `run-custom` defaults to ``--allow-auto-detected`` ON (custom suites
+  exist precisely for non-curated workloads) and writes its bundles to
+  ``results/custom/<slug>/<run-id>/`` with a manifest tagged
+  ``kind: custom`` so reporting can keep these visually distinct from
+  canonical suites. ``validate-custom`` exits non-zero on any error
+  issue (duplicate task IDs, empty prompts, ``mode: scored`` not yet
+  implemented, unknown model references).
+- **Example custom suite template** at ``examples/custom-tests/quick/``
+  with a working ``suite.yaml`` (Czech idiom translation, JSON
+  extraction, Python code review) and a ``README.md`` explaining how to
+  copy, edit, and run it.
+- **Spec doc** ``docs/custom-tests-spec.md`` covering the v0.2.0 cut
+  (``mode: quick`` only) plus the explicit roadmap for v0.3.0
+  (deterministic scorers + ``dry-run``), v0.4.0 (sandboxed custom
+  Python scorers + per-task timeout enforcement), v0.5.0 (local-only
+  LLM-as-judge), and v0.6.0+ (sharing).
+- **`tests/test_custom_suites.py`** — 16 plain-Python tests covering
+  schema validation (duplicate IDs, empty prompts, empty tasks),
+  YAML / JSON loaders, soft validation (long prompts, bad sampling,
+  unknown model refs), end-to-end runner including resume + error
+  recording, summary aggregation, Markdown rendering, and the
+  ``slugify_suite_name`` helper.
 - **Shared model registry** (`spark_benchmark.model_registry`) extracted
   from `shell.py`. One classification path is now used by the curses TUI,
   the wizard, the console REPL, the natural-language `benchmark` command,

@@ -21,6 +21,12 @@ from spark_benchmark.sustained_throughput import (
     run_sustained_throughput_suite,
 )
 from spark_benchmark.config import load_backend, load_experiment, load_model_config, load_platform
+from spark_benchmark.custom_suites import (
+    load_custom_suite,
+    run_custom_suite_quick,
+    slugify_suite_name,
+    validate_custom_suite,
+)
 from spark_benchmark.model_registry import (
     detect_ollama_models,
     find_config_by_name_or_tag,
@@ -660,6 +666,233 @@ def aggregate(runs: Path = typer.Option(..., exists=True, file_okay=False, dir_o
                 "runs_dir": str(runs),
                 "aggregate_json": str(json_path),
                 "aggregate_markdown": str(md_path),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
+@app.command("validate-custom")
+def validate_custom_command(
+    suite: Path = typer.Argument(
+        ...,
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to a custom suite YAML or JSON.",
+    ),
+    experiment: Path | None = typer.Option(
+        None,
+        "--experiment",
+        exists=True,
+        dir_okay=False,
+        help="Optional experiment file. When provided, also checks suite.models against the curated lineup.",
+    ),
+    platform: str | None = typer.Option(
+        None, "--platform", help="Required only when --experiment is set."
+    ),
+) -> None:
+    """Validate a custom suite without running it.
+
+    Catches schema errors (duplicate task IDs, empty prompts, mode not yet
+    supported), warns about long prompts, and verifies any
+    ``suite.models`` references against the experiment lineup when one is
+    provided. Exits non-zero on any error-severity issue.
+    """
+    maybe_print_banner()
+    try:
+        loaded = load_custom_suite(suite)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]ERROR loading {suite}: {exc}[/red]")
+        raise typer.Exit(code=2)
+
+    available_models: list[str] | None = None
+    if experiment is not None:
+        if platform is None:
+            raise typer.BadParameter("--platform is required when --experiment is provided")
+        _, _, _, experiment_model_configs = load_runtime_context(experiment, platform)
+        available_models = [m.name for m in experiment_model_configs]
+
+    issues = validate_custom_suite(loaded, available_models=available_models)
+
+    payload = {
+        "suite": loaded.name,
+        "version": loaded.version,
+        "mode": loaded.mode,
+        "task_count": len(loaded.tasks),
+        "issues": [{"severity": i.severity, "message": i.message} for i in issues],
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+    errors = [i for i in issues if i.severity == "error"]
+    if errors:
+        raise typer.Exit(code=1)
+
+
+@app.command("run-custom")
+def run_custom_command(
+    suite: Path = typer.Argument(
+        ...,
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Path to a custom suite YAML or JSON.",
+    ),
+    experiment: Path = typer.Option(
+        ...,
+        "--experiment",
+        exists=True,
+        dir_okay=False,
+        help="Experiment YAML — provides the backend and the curated model pool.",
+    ),
+    platform: str = typer.Option(..., "--platform"),
+    models: str | None = typer.Option(
+        None,
+        "--models",
+        help=(
+            "Comma-separated model names overriding the suite's `models:` list. "
+            "Each entry is a curated experiment name or a slugified Ollama tag "
+            "(e.g. `phi4-14b`)."
+        ),
+    ),
+    allow_auto_detected: bool = typer.Option(
+        True,
+        "--allow-auto-detected/--no-allow-auto-detected",
+        help=(
+            "Defaults to True for custom suites — the user explicitly opted "
+            "in to a non-canonical workload. Pass --no-allow-auto-detected "
+            "to restrict the model pool to the experiment YAML."
+        ),
+    ),
+    no_resume: bool = typer.Option(
+        False,
+        "--no-resume",
+        help="Always start fresh; do not skip (model, task) pairs already in results.jsonl.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        help="Where to write the run bundle. Defaults to results/custom/<slug>/<run-id>/.",
+    ),
+) -> None:
+    """Execute a Mode A custom suite end-to-end.
+
+    No scoring is performed in v0.2.0 — this just generates each model's
+    response to each prompt, captures telemetry, and writes a side-by-side
+    Markdown summary. See `docs/custom-tests-spec.md` for the v0.3+
+    roadmap that adds scoring, judges, and sharing.
+    """
+    maybe_print_banner()
+    try:
+        loaded = load_custom_suite(suite)
+    except Exception as exc:  # noqa: BLE001
+        raise typer.BadParameter(f"could not load {suite}: {exc}") from exc
+
+    repo_root, experiment_spec, backend_config, experiment_model_configs = load_runtime_context(
+        experiment, platform
+    )
+    resolved = resolve_runnable_models(
+        backend_config=backend_config,
+        experiment_model_configs=experiment_model_configs,
+        allow_auto_detected=allow_auto_detected,
+    )
+    available_models = [m.name for m in resolved.configs]
+
+    issues = validate_custom_suite(loaded, available_models=available_models)
+    error_issues = [i for i in issues if i.severity == "error"]
+    if error_issues:
+        for issue in issues:
+            console.print(f"[red]{issue.render()}[/red]" if issue.severity == "error" else f"[yellow]{issue.render()}[/yellow]")
+        raise typer.Exit(code=1)
+    for issue in issues:
+        console.print(f"[yellow]{issue.render()}[/yellow]")
+
+    if models:
+        wanted = [name.strip() for name in models.split(",") if name.strip()]
+    elif loaded.models:
+        wanted = list(loaded.models)
+    else:
+        wanted = available_models
+
+    selected_configs = []
+    for name in wanted:
+        cfg = find_config_by_name_or_tag(
+            name, configs=resolved.configs, classified=resolved.classified
+        )
+        if cfg is None:
+            raise typer.BadParameter(
+                f"model {name!r} not found. Available: {', '.join(available_models) or '(none)'}"
+            )
+        if cfg not in selected_configs:
+            selected_configs.append(cfg)
+
+    if not selected_configs:
+        raise typer.BadParameter("no models selected for the run")
+
+    run_id = make_run_id()
+    if output_dir is not None:
+        run_dir = output_dir
+    else:
+        run_dir = (
+            repo_root
+            / "results"
+            / "custom"
+            / slugify_suite_name(loaded.name)
+            / run_id
+        )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    write_json(
+        run_dir / "manifest.json",
+        {
+            "kind": "custom",
+            "run_id": run_id,
+            "suite": loaded.name,
+            "suite_version": loaded.version,
+            "suite_path": str(suite.resolve()),
+            "experiment": experiment_spec.name,
+            "platform": platform,
+            "backend": backend_config.name.value,
+            "models": [cfg.name for cfg in selected_configs],
+            "task_count": len(loaded.tasks),
+            "mode": loaded.mode,
+            "auto_detected_models": [
+                cfg.name for cfg in resolved.auto_detected_configs if cfg in selected_configs
+            ],
+        },
+    )
+
+    backend = build_backend(backend_config)
+    summary = run_custom_suite_quick(
+        suite=loaded,
+        backend=backend,
+        backend_config=backend_config,
+        model_configs=selected_configs,
+        run_dir=run_dir,
+        default_sampling=experiment_spec.sampling,
+        progress_callback=lambda message: console.print(f"[cyan]{message}[/cyan]"),
+        resume=not no_resume,
+    )
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "run_dir": str(run_dir),
+                "results": str(run_dir / "results.jsonl"),
+                "summary_md": str(run_dir / "summary.md"),
+                "summary_json": str(run_dir / "summary.json"),
+                "task_count": len(loaded.tasks),
+                "models": [cfg.name for cfg in selected_configs],
+                "per_model": [
+                    {
+                        "model": bucket["model"],
+                        "completed": bucket["tasks_completed"],
+                        "errored": bucket["tasks_errored"],
+                        "mean_ttft_ms": bucket["mean_ttft_ms"],
+                        "mean_decode_tps": bucket["mean_decode_tps"],
+                    }
+                    for bucket in summary["per_model"]
+                ],
             },
             ensure_ascii=False,
             indent=2,

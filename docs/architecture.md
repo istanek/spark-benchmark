@@ -214,6 +214,30 @@ A canonical "run a benchmark" path:
   - Menu actions: `do_run`, `show_models`, `show_suites`, `do_chat`,
     `chat_command` (readline-style chat outside the curses loop).
 
+- **`custom_suites.py`** — Bring-Your-Own-Test (BYOT) subsystem,
+  introduced in v0.2.0 and specced in detail at
+  `docs/custom-tests-spec.md`. Deliberately separate from
+  `suites.SuiteDefinition` so user-driven schema changes never perturb
+  the canonical suites:
+  - `CustomSuiteTask` / `CustomSuiteDefinition` — Pydantic models for
+    user-supplied suites. v0.2.0 honours `mode: quick` (Mode A,
+    pass-through, no scoring); `mode: scored` is rejected at load time
+    with a pointer to the v0.3.0 roadmap.
+  - `load_custom_suite(path)` — YAML or JSON loader (auto-detects on
+    suffix; falls back to YAML).
+  - `validate_custom_suite(suite, available_models=...)` — soft checks
+    beyond the Pydantic schema (long prompts, sampling out of range,
+    unknown model references).
+  - `run_custom_suite_quick(...)` — runs every `(model, task)`,
+    appends rows to `results.jsonl`, supports resume via
+    `already_completed_pairs(run_dir)`, records errors as rows
+    instead of aborting.
+  - `build_custom_summary(...)` + `render_custom_summary_markdown(...)`
+    — per-model telemetry table plus a side-by-side per-task block.
+  - Bundle layout: `results/custom/<slug>/<run-id>/` with
+    `manifest.json` tagged `kind: "custom"` so reporting can keep
+    custom runs visually distinct.
+
 ### Data model
 
 - **`models.py`** — every Pydantic type used downstream:

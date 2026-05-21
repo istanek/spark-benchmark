@@ -50,6 +50,18 @@ results/benchmarks/<run-id>/
 
 Run IDs come from `results_bundle.make_run_id()` (`YYYYMMDDTHHMMSSZ-<8hex>`).
 
-For full module map see `docs/architecture.md`. For planned suites see
-`docs/extensions-spec.md`. Methodology lives in `METHODOLOGY.md` — keep it
-honest: publish failures, not just wins.
+## Custom (BYOT) suites
+
+User-supplied benchmark suites live in `spark_benchmark.custom_suites`
+and ship under `spark-bench run-custom` / `validate-custom`. v0.2.0
+implements **Mode A only** (`mode: quick`, pass-through, no scoring);
+`mode: scored` is rejected at load time. See
+`docs/custom-tests-spec.md` for the full schema, run-bundle layout
+(`results/custom/<slug>/<run-id>/` with `kind: "custom"` manifest),
+and the v0.3+ roadmap. Custom suites are **deliberately separate**
+from `suites.SuiteDefinition` — never reuse the canonical schema for
+user-facing input.
+
+For full module map see `docs/architecture.md`. For planned canonical
+suites see `docs/extensions-spec.md`. Methodology lives in
+`METHODOLOGY.md` — keep it honest: publish failures, not just wins.
