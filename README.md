@@ -25,23 +25,89 @@ Initial v1 lineup:
 
 ## Quick start
 
-Interactive console:
+```bash
+cd ~/.openclaw/workspace/spark-benchmark
+pip install -e .
 
-- `cd ~/.openclaw/workspace/spark-benchmark`
-- `PYTHONPATH=src python3 -m spark_benchmark.cli console --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark`
+# Easiest: launch the full TUI (no flags, picks defaults)
+spark-bench
 
-Optional model override:
+# Or invoke a specific subcommand explicitly
+PYTHONPATH=src python3 -m spark_benchmark.cli wizard \
+  --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark
+```
 
-- `PYTHONPATH=src python3 -m spark_benchmark.cli console --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark --model gemma-4`
+## Interactive CLI
 
-Natural-language benchmark orchestration:
+The harness ships with three interactive modes plus one natural-language
+batch entrypoint. All four resolve the same YAML experiment + platform +
+backend context, so they share models, suites, sampling, and reporting.
 
-- `PYTHONPATH=src python3 -m spark_benchmark.cli benchmark otestuj qwen gemma nemotron zamer se na rychlost spolehlivost a openclaw structured output --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark`
+### `spark-bench shell` — full curses TUI
 
-Interactive benchmark wizard:
+Launches a full-screen menu (`Run / Models / Suites / Info / Chat /
+Refresh / Quit`) that lets you:
 
-- `PYTHONPATH=src python3 -m spark_benchmark.cli wizard --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark`
-- Use arrow keys to move, `Space` to toggle a model or suite, and `Enter` to continue.
+- live-detect models from a running Ollama (`/api/tags`), match them
+  against the experiment's `configs/models/*.yaml`, and grey out
+  vision / embedding tags so they can't be benchmarked by accident;
+- multiselect models and suites for a benchmark bundle, then watch
+  per-model / per-task progress in a scrolling log pane;
+- drop into the Chat panel to talk to a single picked model without
+  leaving the TUI;
+- inspect suite metadata (description, task count, fixture path) before
+  committing to a run.
+
+`spark-bench` with no subcommand defaults to `shell`. `Esc` / `q` cancels
+overlays, `Enter` confirms, `Space` toggles selections.
+
+### `spark-bench wizard` — multiselect picker → bundle run
+
+A lighter alternative to the full TUI when you already know what you
+want. Curses overlay with arrow-key navigation:
+
+```bash
+PYTHONPATH=src python3 -m spark_benchmark.cli wizard \
+  --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark
+```
+
+`↑`/`↓` move, `Space` toggles a model or suite, `Enter` confirms. After
+two screens (models, then suites) the harness runs the matching bundle
+end-to-end and prints a CLI summary plus `report.md` path.
+
+### `spark-bench console` — single-model REPL
+
+One model, free-form prompts, until you type `/exit`:
+
+```bash
+PYTHONPATH=src python3 -m spark_benchmark.cli console \
+  --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark \
+  --model gemma-4
+```
+
+Useful for sanity-checking a model end-to-end (Ollama tag mapping,
+sampling defaults, warm-up latency) before kicking off a longer
+benchmark. Omitting `--model` picks the first one in the experiment.
+
+### `spark-bench benchmark <natural-language request>` — NL batch
+
+Not interactive in the curses sense, but accepts a Czech / English
+sentence and routes it to a `BenchmarkPlan`:
+
+```bash
+PYTHONPATH=src python3 -m spark_benchmark.cli benchmark \
+  otestuj qwen gemma nemotron zamer se na rychlost spolehlivost \
+  a openclaw structured output \
+  --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark
+```
+
+Recognised keywords include `rychlost`/`speed`, `spolehliv`/`reliab`,
+`kod`/`code`, `dlouhodob`/`sustained`, `openclaw`, `json`, `structured`,
+plus model aliases (`qwen` → `qwen-3.6`, `gemma` → `gemma-4`, `nemotron`
+→ `nemotron-3`).
 
 ## Current scaffold includes
 
