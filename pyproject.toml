@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "spark-benchmark"
 version = "0.1.0"
 description = "Reproducible local LLM benchmark harness for NVIDIA DGX Spark"
-readme = "README.md"
+readme = {file = "docs/README.md", content-type = "text/markdown"}
 requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2.7,<3",

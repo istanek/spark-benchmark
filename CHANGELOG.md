@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Project landing page is now `README.txt` (plain language).** The
+  markdown version moved to `docs/README.md` so the GitLab project page
+  renders the human-friendly plain-text overview by default. PyPI
+  metadata (`pyproject.toml::readme`) was repointed to the new
+  location and serves the same markdown content. All cross-references
+  in the `docs/` tree were updated to mention both paths; root
+  `README.md` was deleted.
+
 ### Added
 
 - **Bring-Your-Own-Test (BYOT) subsystem — Mode A.** New

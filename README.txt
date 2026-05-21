@@ -131,7 +131,18 @@ work.
   Way 4 — bring your own test
   ---------------------------
 
-    spark-bench run-custom examples/custom-tests/quick/suite.yaml \
+    # 1. Copy the example as a starting point
+    cp -r examples/custom-tests/quick my-test
+    $EDITOR my-test/suite.yaml
+
+    # 2. Validate before running (catches typos, missing fields,
+    #    duplicate task IDs, unknown models). Free, takes < 1 second.
+    spark-bench validate-custom my-test/suite.yaml \
+                                --experiment configs/experiments/spark-ollama-baseline.yaml \
+                                --platform spark
+
+    # 3. Run it
+    spark-bench run-custom my-test/suite.yaml \
                            --experiment configs/experiments/spark-ollama-baseline.yaml \
                            --platform spark
 
@@ -145,6 +156,12 @@ work.
   each model produced them. Scoring (was the answer correct? did the
   JSON match? did the code compile?) ships in v0.3.0; see
   docs/custom-tests-spec.md for the roadmap.
+
+  If a long run dies half-way through (Ollama crashes, you Ctrl-C the
+  process, the box reboots) just rerun the same command against the
+  same output directory — the runner reads the existing results.jsonl
+  and skips every (model, task) pair that's already on disk. Pass
+  --no-resume to start fresh.
 
   Useful when the canonical benchmarks don't ask the question you
   actually care about.
@@ -219,7 +236,7 @@ Five test suites, all working today:
   Where do the results go?
 --------------------------------------------------------------------------------
 
-Every run creates one directory under
+Canonical benchmark runs (Way 1, 2, 5) write to
 
     results/benchmarks/<timestamp>-<random>/
 
@@ -232,7 +249,19 @@ with one subdirectory per test suite. Inside each you get:
 
 The whole run also gets a top-level report.md with the overall ranking.
 
-Nothing is uploaded anywhere. The results stay on your machine.
+Custom (Bring-Your-Own-Test) runs (Way 4) write to a separate tree so
+they cannot be confused with the canonical numbers:
+
+    results/custom/<suite-slug>/<run-id>/
+        manifest.json   tagged kind: "custom"
+        results.jsonl   one row per (model, task)
+        summary.json    per-model telemetry aggregates
+        summary.md      side-by-side report (telemetry table on top,
+                        then one section per task with each model's
+                        reply rendered as a fenced block)
+
+Either way, nothing is uploaded anywhere. The results stay on your
+machine.
 
 
 --------------------------------------------------------------------------------
@@ -263,8 +292,9 @@ Nothing is uploaded anywhere. The results stay on your machine.
   Where to read more
 --------------------------------------------------------------------------------
 
-  README.md             Same content as this file but with markdown
-                        formatting and a few extra technical sections.
+  docs/README.md        Same content as this file but with markdown
+                        formatting and a few extra technical sections
+                        (badges, tests overview table, suite mix).
 
   METHODOLOGY.md        Why we measure what we measure. The principles
                         we hold ourselves to (publish failures, not

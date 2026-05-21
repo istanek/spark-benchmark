@@ -3,7 +3,7 @@
 ## Status
 
 Adopted for v1 in Spark-only form. v1 runs only against the DGX Spark configuration,
-consistent with the project's v1 scope (`README.md`, `METHODOLOGY.md`). Cross-platform
+consistent with the project's v1 scope (`README.txt` / `docs/README.md`, `METHODOLOGY.md`). Cross-platform
 framing is explicitly out of scope — see also `docs/custom-tests-spec.md` for the
 Spark-only "bring-your-own-test" subsystem.
 

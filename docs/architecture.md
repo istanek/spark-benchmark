@@ -1,6 +1,7 @@
 # spark-benchmark architecture
 
-Companion to `README.md` (what + why) and `METHODOLOGY.md` (how we score). This
+Companion to `README.txt` (plain-language overview) / `docs/README.md`
+(markdown version with badges) and `METHODOLOGY.md` (how we score). This
 doc is the **how the code is laid out**: which module owns what, how data flows
 end-to-end, and what extends where.
 

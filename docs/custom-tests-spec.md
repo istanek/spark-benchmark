@@ -1,7 +1,8 @@
 # Custom user tests — design spec
 
 Companion to `docs/architecture.md`, `docs/extensions-spec.md`,
-`README.md`, and `METHODOLOGY.md`. This document describes the
+`README.txt` (plain-language) / `docs/README.md` (markdown), and
+`METHODOLOGY.md`. This document describes the
 **Bring-Your-Own-Test (BYOT) subsystem** that lets users answer "how do
 these models perform on **my** workload?", on top of the harness's
 existing model + backend + telemetry infrastructure.
@@ -295,5 +296,5 @@ All of these must hold before `0.2.0` is tagged:
 - A copy of the example template is committed under
   `examples/custom-tests/quick/` with a `README.md` explaining the
   shape and the run command.
-- The CLI commands are documented in `README.md`, `README.txt`,
+- The CLI commands are documented in `README.txt`, `docs/README.md`,
   `CHANGELOG.md`, and `docs/architecture.md`.

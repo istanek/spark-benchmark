@@ -1,8 +1,12 @@
 # spark-benchmark
 
 [![pipeline status](https://gitlab.com/istanek/spark-benchmark/badges/main/pipeline.svg)](https://gitlab.com/istanek/spark-benchmark/-/commits/main)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue.svg)](https://www.python.org/)
+
+> The plain-language version of this document is `../README.txt`. This
+> markdown copy lives under `docs/` so the GitLab project landing page
+> renders the plain-text README instead.
 
 Reproducible local LLM benchmark harness for evaluating model behavior on NVIDIA DGX Spark.
 
@@ -40,8 +44,9 @@ PYTHONPATH=src python3 -m spark_benchmark.cli wizard \
 ## Interactive CLI
 
 The harness ships with three interactive modes plus one natural-language
-batch entrypoint. All four resolve the same YAML experiment + platform +
-backend context, so they share models, suites, sampling, and reporting.
+batch entrypoint and one bring-your-own-test entrypoint. They all
+resolve the same YAML experiment + platform + backend context, so they
+share models, suites, sampling, and reporting.
 
 ### `spark-bench shell` — full curses TUI
 
@@ -156,9 +161,9 @@ explicitly opted in to a non-canonical workload. A bare
 without running anything (catches duplicate task IDs, empty prompts,
 unknown model references, the not-yet-implemented `mode: scored`).
 There is no scoring in v0.2.0 — `quick` mode is pass-through only. See
-`docs/custom-tests-spec.md` for the v0.3.0+ roadmap that adds
-deterministic scorers, sandboxed custom-Python scorers, and a local
-LLM-as-judge.
+[`custom-tests-spec.md`](custom-tests-spec.md) for the v0.3.0+ roadmap
+that adds deterministic scorers, sandboxed custom-Python scorers, and
+a local LLM-as-judge.
 
 ### What `--allow-auto-detected` actually does
 
@@ -186,8 +191,9 @@ on — the operator is in front of the screen and can see the
 - backend and telemetry base interfaces
 - Spark-only sample experiment, platform, backend, and model configs
 - first working reliability suite runner: `spark-bench run --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark --run-suite hallucination_grounding` loads `data/reliability/hallucination_grounding_v1.json`, runs every task against every configured model, writes one row per (model, task) to `results.jsonl`, and emits `summary.json` + `summary.md` with per-model pass rates using simple heuristics for `answer_from_context`, `abstain`, and `correct_user`
-- code generation suite (`--run-suite code_generation`): canonical HumanEval-style problems with sandboxed execution (`subprocess` + `resource.setrlimit` + timeout) and pass@k unbiased estimator; reference-score validator at `data/code/reference_scores.yaml` emits warnings when results drift from published baselines. See `docs/extensions-spec.md` for the full long-context / sustained-throughput / code-generation extension plan
+- code generation suite (`--run-suite code_generation`): canonical HumanEval-style problems with sandboxed execution (`subprocess` + `resource.setrlimit` + timeout) and pass@k unbiased estimator; reference-score validator at `data/code/reference_scores.yaml` emits warnings when results drift from published baselines. See [`extensions-spec.md`](extensions-spec.md) for the full long-context / sustained-throughput / code-generation extension plan
 - placeholder suite structure for quality, performance, reliability, and practical task checks
+- bring-your-own-test (BYOT) custom suites — `spark-bench run-custom` plus `spark-bench validate-custom`. v0.2.0 ships Mode A (pass-through, no scoring); see [`custom-tests-spec.md`](custom-tests-spec.md) for the roadmap.
 
 ## Tests overview
 
