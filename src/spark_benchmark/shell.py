@@ -13,6 +13,14 @@ from rich.console import Console
 from rich.panel import Panel
 
 from spark_benchmark.config import load_backend, load_experiment, load_model_config, load_platform
+from spark_benchmark.model_registry import (
+    DetectedOllamaModel,
+    OllamaModelInfo,
+    classify_detected,
+    detect_ollama_models,
+    is_embedding_model,
+    is_vision_model,
+)
 from spark_benchmark.models import BackendConfig, ExperimentSpec, ModelConfig, PlatformConfig
 from spark_benchmark.orchestration import BenchmarkPlan, run_benchmark_bundle
 from spark_benchmark.reporting import aggregate_runs, render_cli_benchmark_summary, write_report
@@ -72,73 +80,6 @@ console = Console()
 
 
 @dataclass
-class DetectedOllamaModel:
-    tag: str
-    family: str = ""
-    families: tuple[str, ...] = ()
-    parameter_size: str = ""
-    quantization_level: str = ""
-
-
-@dataclass
-class OllamaModelInfo:
-    tag: str
-    config: ModelConfig | None
-    auto_detected: bool = False
-    disable_reason: str | None = None
-
-    @property
-    def has_config(self) -> bool:
-        return self.config is not None
-
-    @property
-    def display_name(self) -> str:
-        return self.config.name if self.config else self.tag
-
-
-_VISION_FAMILY_HINTS = ("vl", "vision", "clip", "pixtral", "llava", "moondream")
-_VISION_TAG_HINTS = ("pixtral", "llava", "vision", "-vl", ":vl", "/vl")
-_EMBEDDING_FAMILY_HINTS = ("bert", "embed")
-_EMBEDDING_TAG_HINTS = ("embed",)
-
-
-def _family_haystack(detected: DetectedOllamaModel) -> str:
-    return " ".join((detected.family, *detected.families)).lower()
-
-
-def is_vision_model(detected: DetectedOllamaModel) -> bool:
-    fams = _family_haystack(detected)
-    if any(hint in fams for hint in _VISION_FAMILY_HINTS):
-        return True
-    tag = detected.tag.lower()
-    return any(hint in tag for hint in _VISION_TAG_HINTS)
-
-
-def is_embedding_model(detected: DetectedOllamaModel) -> bool:
-    fams = _family_haystack(detected)
-    if any(hint in fams for hint in _EMBEDDING_FAMILY_HINTS):
-        return True
-    return any(hint in detected.tag.lower() for hint in _EMBEDDING_TAG_HINTS)
-
-
-def _slugify_tag(tag: str) -> str:
-    return tag.replace(":", "-").replace("/", "_")
-
-
-def _synthesize_model_config(detected: DetectedOllamaModel) -> ModelConfig:
-    return ModelConfig(
-        name=_slugify_tag(detected.tag),
-        family=detected.family or (detected.families[0] if detected.families else "unknown"),
-        revision=detected.tag,
-        quantization=detected.quantization_level or "ollama-default",
-        source="ollama-local",
-        context_length=131072,
-        artifact_path=detected.tag,
-        notes=["auto-detected from Ollama (no YAML config)"],
-    )
-
-
-@dataclass
 class ShellContext:
     repo_root: Path
     experiment: ExperimentSpec
@@ -176,62 +117,16 @@ def load_default_context() -> ShellContext:
     )
 
 
-def detect_ollama_models(backend_config: BackendConfig) -> list[DetectedOllamaModel]:
-    import urllib.request
-
-    endpoint = str(backend_config.options.get("endpoint") or "")
-    if not endpoint:
-        return []
-    tags_url = endpoint.rsplit("/", 1)[0] + "/tags"
-    try:
-        with urllib.request.urlopen(tags_url, timeout=5) as response:
-            payload = json.load(response)
-    except Exception:
-        return []
-    detected: list[DetectedOllamaModel] = []
-    for item in payload.get("models", []):
-        name = item.get("name")
-        if not name:
-            continue
-        details = item.get("details") or {}
-        detected.append(
-            DetectedOllamaModel(
-                tag=str(name),
-                family=str(details.get("family") or ""),
-                families=tuple(str(f) for f in (details.get("families") or [])),
-                parameter_size=str(details.get("parameter_size") or ""),
-                quantization_level=str(details.get("quantization_level") or ""),
-            )
-        )
-    return detected
-
-
 def classify_models(
     ctx: ShellContext, detected: list[DetectedOllamaModel]
 ) -> list[OllamaModelInfo]:
-    detected_by_tag = {item.tag: item for item in detected}
-    items: list[OllamaModelInfo] = []
-    matched_tags: set[str] = set()
-    for cfg in ctx.model_configs:
-        tag = cfg.artifact_path or cfg.revision
-        if tag in detected_by_tag:
-            items.append(OllamaModelInfo(tag=tag, config=cfg))
-            matched_tags.add(tag)
-    for tag in sorted(detected_by_tag.keys() - matched_tags):
-        info = detected_by_tag[tag]
-        if is_vision_model(info):
-            items.append(OllamaModelInfo(tag=tag, config=None, disable_reason="vision model"))
-        elif is_embedding_model(info):
-            items.append(OllamaModelInfo(tag=tag, config=None, disable_reason="embedding model"))
-        else:
-            items.append(
-                OllamaModelInfo(
-                    tag=tag,
-                    config=_synthesize_model_config(info),
-                    auto_detected=True,
-                )
-            )
-    return items
+    """Backwards-compatible wrapper around ``classify_detected``.
+
+    Existing tests and callers pass a ``ShellContext``. Internally we just
+    delegate to the shared registry so the curses TUI shares one
+    classification path with ``cli.py``.
+    """
+    return classify_detected(ctx.model_configs, detected)
 
 
 def load_suite_metadata(repo_root: Path, suite_name: str) -> dict[str, Any] | None:

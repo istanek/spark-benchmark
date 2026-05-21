@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Shared model registry** (`spark_benchmark.model_registry`) extracted
+  from `shell.py`. One classification path is now used by the curses TUI,
+  the wizard, the console REPL, the natural-language `benchmark` command,
+  and the plain `run` command.
+- **`--allow-auto-detected` flag** on `run`, `console`, `benchmark`, and
+  `wizard`. When set, every chat-capable Ollama tag is offered alongside
+  the curated experiment lineup, with auto-synthesized `ModelConfig`s
+  carrying `notes=["auto-detected from Ollama (no YAML config)"]`. Off by
+  default to preserve reproducibility for `run` and the NL routers.
+- **`console --model` accepts Ollama tags directly** (`--model phi4:14b`)
+  via `find_config_by_name_or_tag`, in addition to slugified
+  (`phi4-14b`) and curated experiment names.
+- **`tests/test_model_registry.py`** — coverage for `slugify_tag`,
+  `synthesize_model_config`, `classify_detected`, the new
+  `resolve_runnable_models` resolver (default + auto-detect + collision),
+  and `find_config_by_name_or_tag` resolution order.
+
+### Changed
+
+- Curses TUI no longer owns its own classifier; it delegates to
+  `model_registry.classify_detected`. The `classify_models(ctx, detected)`
+  shape is preserved for backwards compatibility.
+- `cli.detect_ollama_model_tags` is now a thin wrapper over the shared
+  `detect_ollama_models`. The duplicate URL/JSON parsing logic is gone.
+
 ## [0.1.0] - 2026-05-20
 
 Initial public release of the spark-benchmark scaffold.

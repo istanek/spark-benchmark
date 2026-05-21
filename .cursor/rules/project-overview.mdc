@@ -15,6 +15,13 @@ v1 is intentionally Spark-only — never frame results as cross-platform compari
 - `nemotron-3` (Ollama tag `nemotron3:33b`)
 - `nemotron-3-super` is **retired** — its YAML is a tombstone, do not re-add it.
 
+The curated lineup above is the *default*. Every CLI surface
+(`run` / `console` / `benchmark` / `wizard`) accepts
+`--allow-auto-detected` to also offer any non-vision/non-embedding tag
+that Ollama reports — those entries are auto-synthesized via
+`spark_benchmark.model_registry.synthesize_model_config` and labeled
+`auto-detected`. The curses TUI behaves as if the flag were always on.
+
 ## Production backend
 
 Ollama HTTP at `http://localhost:11434/api/generate`. `llamacpp` adapter exists; `trt-llm` / `vllm` are stubs.

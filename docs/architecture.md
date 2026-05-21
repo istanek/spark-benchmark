@@ -169,26 +169,48 @@ A canonical "run a benchmark" path:
 
 - **`cli.py` (`spark-bench` Typer app)** — sub-commands:
   - `run` — execute one suite directly against the configured experiment.
-  - `console` — alias for the interactive curses shell.
+  - `console` — single-model REPL; `--model` accepts experiment name, raw
+    Ollama tag, or slugified tag (resolved via
+    `model_registry.find_config_by_name_or_tag`).
   - `benchmark` — natural-language flow: parses a Czech/English sentence into a
     `BenchmarkPlan` (`orchestration.parse_benchmark_request`) and runs the bundle.
   - `wizard` — interactive multi-select picker (curses) → bundle run.
   - `aggregate` — fold a `results/` tree into a single JSON.
   - `report` — render aggregate to markdown or HTML.
   - `dashboard` — placeholder for future live view.
-  - Helpers: `load_runtime_context`, `detect_ollama_model_tags` (CLI-local, kept
-    separate from `shell.detect_ollama_models` because the CLI returns plain
-    strings for backwards-compat with the `run` command).
+  - Common flag: every command that runs models (`run`, `console`, `benchmark`,
+    `wizard`) accepts `--allow-auto-detected`; off by default so manifests
+    only contain reviewed entries.
+  - Helpers: `load_runtime_context`, plus a thin
+    `detect_ollama_model_tags(backend) -> set[str]` wrapper kept for callers
+    that only need raw tag strings.
 
-- **`shell.py`** — curses TUI built around `ShellContext`:
-  - `OllamaModelInfo` carries the picker state (`has_config`, `auto_detected`,
-    `disable_reason`).
-  - `detect_ollama_models` hits `/api/tags` and captures family info.
-  - `classify_models` joins YAML configs + detected tags, auto-synthesizes
-    `ModelConfig` for unknown non-vision/non-embedding tags, marks vision and
-    embedding extras as disabled.
+- **`model_registry.py`** — shared model-pool resolver, used by all four
+  CLI surfaces and by the curses TUI:
+  - `DetectedOllamaModel` / `OllamaModelInfo` dataclasses carry the picker
+    state (`has_config`, `auto_detected`, `disable_reason`).
+  - `detect_ollama_models(backend_config)` hits `/api/tags` and captures
+    family info; returns `[]` on any error so callers can probe non-fatally.
+  - `classify_detected(model_configs, detected)` joins YAML configs +
+    detected tags, auto-synthesizes `ModelConfig` for unknown
+    non-vision/non-embedding tags, marks vision and embedding extras as
+    disabled.
+  - `resolve_runnable_models(...)` is the canonical entrypoint: returns
+    `(configs, classified)` where `configs` is the list a CLI command
+    should expose (curated YAML, plus auto-detected extras when the flag
+    is on).
+  - `find_config_by_name_or_tag(needle, ...)` resolves a `--model X`
+    string against curated names → tags → slugified tags →
+    classification list.
   - `is_vision_model` / `is_embedding_model` — family- and tag-substring
     heuristics (see `_VISION_FAMILY_HINTS`, `_EMBEDDING_FAMILY_HINTS`).
+
+- **`shell.py`** — curses TUI built around `ShellContext`:
+  - Re-exports `DetectedOllamaModel`, `OllamaModelInfo`,
+    `detect_ollama_models`, `is_vision_model`, `is_embedding_model` from
+    `model_registry` for backwards compatibility.
+  - `classify_models(ctx, detected)` is a thin wrapper over
+    `model_registry.classify_detected(ctx.model_configs, detected)`.
   - Menu actions: `do_run`, `show_models`, `show_suites`, `do_chat`,
     `chat_command` (readline-style chat outside the curses loop).
 

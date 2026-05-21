@@ -51,6 +51,11 @@ Refresh / Quit`) that lets you:
 - live-detect models from a running Ollama (`/api/tags`), match them
   against the experiment's `configs/models/*.yaml`, and grey out
   vision / embedding tags so they can't be benchmarked by accident;
+- **also offer non-curated tags** — every chat-capable Ollama model that
+  doesn't have a YAML config is auto-synthesized into a runnable
+  `ModelConfig` (Ollama defaults) and labeled `auto-detected` in the
+  picker. The same logic is shared with `wizard` / `console` /
+  `benchmark` / `run` via `--allow-auto-detected`;
 - multiselect models and suites for a benchmark bundle, then watch
   per-model / per-task progress in a scrolling log pane;
 - drop into the Chat panel to talk to a single picked model without
@@ -69,12 +74,15 @@ want. Curses overlay with arrow-key navigation:
 ```bash
 PYTHONPATH=src python3 -m spark_benchmark.cli wizard \
   --experiment configs/experiments/spark-ollama-baseline.yaml \
-  --platform spark
+  --platform spark \
+  --allow-auto-detected   # optional: also offer non-curated Ollama tags
 ```
 
 `↑`/`↓` move, `Space` toggles a model or suite, `Enter` confirms. After
 two screens (models, then suites) the harness runs the matching bundle
-end-to-end and prints a CLI summary plus `report.md` path.
+end-to-end and prints a CLI summary plus `report.md` path. With
+`--allow-auto-detected` the picker shows every non-vision Ollama tag,
+flagged as `auto-detected`.
 
 ### `spark-bench console` — single-model REPL
 
@@ -85,11 +93,19 @@ PYTHONPATH=src python3 -m spark_benchmark.cli console \
   --experiment configs/experiments/spark-ollama-baseline.yaml \
   --platform spark \
   --model gemma-4
+
+# Talk to any Ollama tag, even without a YAML config:
+PYTHONPATH=src python3 -m spark_benchmark.cli console \
+  --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark \
+  --allow-auto-detected --model phi4:14b
 ```
 
 Useful for sanity-checking a model end-to-end (Ollama tag mapping,
 sampling defaults, warm-up latency) before kicking off a longer
-benchmark. Omitting `--model` picks the first one in the experiment.
+benchmark. `--model` accepts experiment names, raw Ollama tags, and the
+slugified form interchangeably. Omitting `--model` picks the first
+config in the resolved list (curated first, then auto-detected).
 
 ### `spark-bench benchmark <natural-language request>` — NL batch
 
@@ -107,7 +123,26 @@ PYTHONPATH=src python3 -m spark_benchmark.cli benchmark \
 Recognised keywords include `rychlost`/`speed`, `spolehliv`/`reliab`,
 `kod`/`code`, `dlouhodob`/`sustained`, `openclaw`, `json`, `structured`,
 plus model aliases (`qwen` → `qwen-3.6`, `gemma` → `gemma-4`, `nemotron`
-→ `nemotron-3`).
+→ `nemotron-3`). Pass `--allow-auto-detected` to also route to any
+non-curated Ollama tag by its slugified name (`phi4:14b` → `phi4-14b`).
+
+### What `--allow-auto-detected` actually does
+
+All four CLI surfaces share `model_registry.resolve_runnable_models`:
+
+- **off (default)** — only experiment YAML models are runnable. Best for
+  reproducible runs and CI, where you want the manifest to match a
+  reviewed lineup.
+- **on** — also probes Ollama, classifies every detected tag (vision /
+  embedding tags are still skipped), and synthesizes a `ModelConfig` for
+  the rest using Ollama defaults. Synthesized entries carry
+  `notes=["auto-detected from Ollama (no YAML config)"]` so the run
+  manifest, report, and Markdown summary all flag the entries that
+  weren't reviewed.
+
+The curses TUI (`spark-bench shell`) always behaves as if the flag were
+on — the operator is in front of the screen and can see the
+`auto-detected` label.
 
 ## Current scaffold includes
 
@@ -132,7 +167,8 @@ All tests are plain-python — runnable both as `pytest tests/` and as
 | `tests/test_orchestration.py` | Natural-language `parse_benchmark_request` — default selections plus Czech/English keyword + alias routing (`qwen` → `qwen-3.6`, `rychlost` → `openclaw_speed`, `spolehliv` → `hallucination_grounding`, …) |
 | `tests/test_reliability.py` | Reliability fixture loading + scoring for the three `expected_behavior` flags (`answer_from_context`, `abstain`, `correct_user`); JSON exact-match scorer including trailing-text rejection; `build_summary` per-model aggregation |
 | `tests/test_code_generation.py` | `pass@k` unbiased estimator (edge cases + bad input); code extraction (markdown fence, inline `def`, raw continuation); sandboxed `subprocess + setrlimit` runs (pass / assertion failure / syntax error / wall-clock timeout); every fixture's `canonical_solution` actually passes the sandbox; reference-score validation (within / outside tolerance, missing expected) |
-| `tests/test_shell.py` | Curses-shell classifier — vision / embedding model detection, auto-synthesis of `ModelConfig` for unknown Ollama tags, `SUITE_REGISTRY` ↔ fixture wiring sanity |
+| `tests/test_shell.py` | Curses-shell classifier surface — `classify_models(ShellContext, …)` backwards-compat wrapper, `SUITE_REGISTRY` ↔ fixture wiring sanity |
+| `tests/test_model_registry.py` | Shared model registry — `slugify_tag` / `synthesize_model_config` defaults, `classify_detected` filtering (vision / embedding / auto-synth), `resolve_runnable_models` with and without `--allow-auto-detected` (collisions skip auto entries), `find_config_by_name_or_tag` lookup order |
 | `tests/test_sustained_throughput.py` | `compute_windows` slices generations into wall-clock buckets; `compute_derived_metrics` reports `initial / sustained / peak tokens_per_s`, `throttle_ratio`, `time_to_throttle_s`, `avg_power_w`, `peak_temp_c`, `energy_j_per_token` |
 
 Run them all:

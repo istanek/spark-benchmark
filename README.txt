@@ -76,10 +76,11 @@ work.
     spark-bench
 
   This opens a colourful full-screen menu. Use arrow keys to move, Enter
-  to choose. The menu shows you which of your locally installed models
-  match the benchmark, lets you tick the ones you want to test, lets you
-  tick which test suites to run, and then runs everything while you
-  watch a scrolling log.
+  to choose. The menu shows EVERY chat-capable model you have pulled in
+  Ollama, not just the three the project is shipped with — anything new
+  you "ollama pull" appears here automatically, labeled "auto-detected".
+  You then tick the ones you want to test, tick which test suites to
+  run, and watch a scrolling log while the benchmark runs.
 
   Anything visual / blue / boxed comes from this mode. It is the easiest
   way to figure out what the tool can do.
@@ -95,6 +96,13 @@ work.
     1. Which models do you want to test?     (pick with Space, Enter)
     2. Which test suites do you want to run? (pick with Space, Enter)
 
+  By default the wizard only offers the curated v1 lineup (qwen-3.6,
+  gemma-4, nemotron-3). Add --allow-auto-detected to also offer any
+  other chat model you have pulled in Ollama:
+
+    spark-bench wizard --experiment configs/experiments/spark-ollama-baseline.yaml \
+                       --platform spark --allow-auto-detected
+
   Then it runs everything and prints a summary at the end.
 
 
@@ -109,6 +117,15 @@ work.
   Type /exit when you are done. Useful for sanity-checking a model
   before running a long benchmark — if it does not answer here, the
   benchmark won't either.
+
+  --model accepts the curated experiment name (gemma-4), the raw Ollama
+  tag (gemma4:31b), or the slugified form (gemma4-31b). Add
+  --allow-auto-detected to chat with any chat-capable Ollama tag, even
+  one that has no YAML config:
+
+    spark-bench console --experiment configs/experiments/spark-ollama-baseline.yaml \
+                        --platform spark --allow-auto-detected \
+                        --model phi4:14b
 
 
   Way 4 — describe what you want in a sentence
@@ -128,7 +145,9 @@ work.
     sustained / dlouhodob         → 5-minute decode soak with throttling
 
   And model aliases: "qwen" matches qwen-3.6, "gemma" matches gemma-4,
-  "nemotron" matches nemotron-3.
+  "nemotron" matches nemotron-3. Add --allow-auto-detected to also
+  match any other chat model in Ollama by its slugified tag (so
+  "phi4:14b" can be referenced as "phi4-14b" in the sentence).
 
   Useful when you don't want to memorise flag names.
 
@@ -192,8 +211,11 @@ Nothing is uploaded anywhere. The results stay on your machine.
 
   "No configured experiment models were detected in Ollama."
       You haven't pulled any of the models the experiment expects.
-      Run "ollama list" to see what you have, then either pull what
-      you're missing or pick a different experiment YAML.
+      Run "ollama list" to see what you have, then either:
+        - pull what you're missing,
+        - pick a different experiment YAML, or
+        - re-run with --allow-auto-detected so the harness uses
+          whatever you DO have.
 
   "Ollama HTTP 500 ..."
       Ollama is running but choked on the request. Most often: the model

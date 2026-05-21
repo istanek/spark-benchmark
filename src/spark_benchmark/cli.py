@@ -4,7 +4,6 @@ import curses
 import json
 import os
 import sys
-import urllib.request
 from pathlib import Path
 
 import typer
@@ -22,6 +21,11 @@ from spark_benchmark.sustained_throughput import (
     run_sustained_throughput_suite,
 )
 from spark_benchmark.config import load_backend, load_experiment, load_model_config, load_platform
+from spark_benchmark.model_registry import (
+    detect_ollama_models,
+    find_config_by_name_or_tag,
+    resolve_runnable_models,
+)
 from spark_benchmark.orchestration import BenchmarkPlan, parse_benchmark_request, run_benchmark_bundle
 from spark_benchmark.reporting import aggregate_runs, render_cli_benchmark_summary, write_report
 from spark_benchmark.reliability import (
@@ -111,17 +115,12 @@ def load_runtime_context(experiment: Path, platform: str) -> tuple[Path, object,
 
 
 def detect_ollama_model_tags(backend_config: object) -> set[str]:
-    endpoint = str(getattr(backend_config, "options", {}).get("endpoint") or "")
-    if not endpoint:
-        return set()
-    tags_url = endpoint.rsplit("/", 1)[0] + "/tags"
-    with urllib.request.urlopen(tags_url, timeout=10) as response:
-        payload = json.load(response)
-    return {
-        str(item.get("name"))
-        for item in payload.get("models", [])
-        if item.get("name")
-    }
+    """Lightweight wrapper kept for callers that only need the set of tags.
+
+    Delegates to :func:`spark_benchmark.model_registry.detect_ollama_models`
+    so the curses TUI and the Typer commands share one detection path.
+    """
+    return {item.tag for item in detect_ollama_models(backend_config)}  # type: ignore[arg-type]
 
 
 def parse_index_selection(raw_value: str, total: int) -> list[int]:
@@ -299,10 +298,28 @@ def run(
     dry_run: bool = typer.Option(False, help="Only validate config and print resolved manifest."),
     smoke_prompt: str | None = typer.Option(None, help="Run a single generation smoke test against the first configured model."),
     run_suite: str | None = typer.Option(None, help="Run a built-in suite such as hallucination_grounding."),
+    allow_auto_detected: bool = typer.Option(
+        False,
+        "--allow-auto-detected",
+        help=(
+            "Also run against any chat model present in Ollama that is not in the "
+            "experiment YAML. Auto-detected entries use Ollama defaults and are "
+            "labeled in the manifest. Off by default for reproducibility."
+        ),
+    ),
 ) -> None:
     maybe_print_banner()
-    repo_root, experiment_spec, backend_config, model_configs = load_runtime_context(experiment, platform)
+    repo_root, experiment_spec, backend_config, experiment_model_configs = load_runtime_context(
+        experiment, platform
+    )
     platform_config = load_platform(repo_root / "configs" / "platforms" / f"{platform}.yaml")
+
+    resolved = resolve_runnable_models(
+        backend_config=backend_config,
+        experiment_model_configs=experiment_model_configs,
+        allow_auto_detected=allow_auto_detected,
+    )
+    model_configs = resolved.configs
 
     runs_root = repo_root / "results" / "runs"
     run_id = make_run_id()
@@ -312,7 +329,7 @@ def run(
         experiment=experiment_spec,
         platform_config=platform_config,
         backend_config=backend_config,
-        model_names=experiment_spec.models,
+        model_names=[m.name for m in model_configs],
         results_dir=run_dir,
     )
     write_manifest(run_dir, manifest)
@@ -380,14 +397,46 @@ def run(
 def console_run(
     experiment: Path = typer.Option(..., "--experiment", exists=True, dir_okay=False),
     platform: str = typer.Option(..., "--platform"),
-    model: str | None = typer.Option(None, "--model", help="Model name from the experiment config."),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help=(
+            "Model to chat with. Accepts an experiment model name "
+            "(e.g. ``qwen-3.6``), an Ollama tag (``phi4:14b``), or its "
+            "slugified form (``phi4-14b``). Without --allow-auto-detected, "
+            "only experiment models resolve."
+        ),
+    ),
+    allow_auto_detected: bool = typer.Option(
+        False,
+        "--allow-auto-detected",
+        help=(
+            "Allow chatting with any chat model Ollama reports, even when it "
+            "is not in the experiment YAML. The auto-detected config uses "
+            "Ollama defaults (no curated sampling, ctx, or notes)."
+        ),
+    ),
 ) -> None:
     maybe_print_banner()
-    _, experiment_spec, backend_config, model_configs = load_runtime_context(experiment, platform)
+    _, experiment_spec, backend_config, experiment_model_configs = load_runtime_context(
+        experiment, platform
+    )
+    resolved = resolve_runnable_models(
+        backend_config=backend_config,
+        experiment_model_configs=experiment_model_configs,
+        allow_auto_detected=allow_auto_detected,
+    )
+    model_configs = resolved.configs
 
-    selected_model = next((item for item in model_configs if item.name == model), None)
+    if not model_configs:
+        raise typer.BadParameter("No models available. Pass --allow-auto-detected to use Ollama tags directly.")
+
     if model is None:
         selected_model = model_configs[0]
+    else:
+        selected_model = find_config_by_name_or_tag(
+            model, configs=model_configs, classified=resolved.classified
+        )
     if selected_model is None:
         available = ", ".join(item.name for item in model_configs)
         raise typer.BadParameter(f"Unknown model '{model}'. Available: {available}")
@@ -419,10 +468,27 @@ def benchmark(
     request: list[str] = typer.Argument(..., help="Natural-language benchmark request."),
     experiment: Path = typer.Option(..., "--experiment", exists=True, dir_okay=False),
     platform: str = typer.Option(..., "--platform"),
+    allow_auto_detected: bool = typer.Option(
+        False,
+        "--allow-auto-detected",
+        help=(
+            "Expand the candidate model pool to include any chat model "
+            "Ollama reports, even if it is not in the experiment YAML. "
+            "Recognised by slugified name (``phi4:14b`` -> ``phi4-14b``)."
+        ),
+    ),
 ) -> None:
     maybe_print_banner()
-    repo_root, experiment_spec, backend_config, all_model_configs = load_runtime_context(experiment, platform)
+    repo_root, experiment_spec, backend_config, experiment_model_configs = load_runtime_context(
+        experiment, platform
+    )
     platform_config = load_platform(repo_root / "configs" / "platforms" / f"{platform}.yaml")
+    resolved = resolve_runnable_models(
+        backend_config=backend_config,
+        experiment_model_configs=experiment_model_configs,
+        allow_auto_detected=allow_auto_detected,
+    )
+    all_model_configs = resolved.configs
     request_text = " ".join(request).strip()
     available_models = [model.name for model in all_model_configs]
     plan = parse_benchmark_request(request_text, available_models)
@@ -459,21 +525,63 @@ def benchmark(
 def wizard(
     experiment: Path = typer.Option(..., "--experiment", exists=True, dir_okay=False),
     platform: str = typer.Option(..., "--platform"),
+    allow_auto_detected: bool = typer.Option(
+        False,
+        "--allow-auto-detected",
+        help=(
+            "Also offer any chat model Ollama reports, not just the curated "
+            "experiment lineup. Auto-detected entries are flagged in the "
+            "model picker."
+        ),
+    ),
 ) -> None:
-    repo_root, experiment_spec, backend_config, all_model_configs = load_runtime_context(experiment, platform)
+    repo_root, experiment_spec, backend_config, experiment_model_configs = load_runtime_context(
+        experiment, platform
+    )
     platform_config = load_platform(repo_root / "configs" / "platforms" / f"{platform}.yaml")
 
-    detected_tags = detect_ollama_model_tags(backend_config)
-    available_configs = [model for model in all_model_configs if (model.artifact_path or model.revision) in detected_tags]
+    detected = detect_ollama_models(backend_config)
+    detected_tags = {item.tag for item in detected}
+    curated_available = [
+        model
+        for model in experiment_model_configs
+        if (model.artifact_path or model.revision) in detected_tags
+    ]
+    available_configs: list = list(curated_available)
+    auto_names: set[str] = set()
+    if allow_auto_detected:
+        resolved = resolve_runnable_models(
+            backend_config=backend_config,
+            experiment_model_configs=experiment_model_configs,
+            allow_auto_detected=True,
+        )
+        for cfg in resolved.auto_detected_configs:
+            if cfg.name not in {m.name for m in available_configs}:
+                available_configs.append(cfg)
+                auto_names.add(cfg.name)
     if not available_configs:
-        raise typer.BadParameter("No configured experiment models were detected in Ollama.")
+        if allow_auto_detected:
+            raise typer.BadParameter(
+                "Ollama returned no chat-capable models. Pull at least one with `ollama pull <tag>` and retry."
+            )
+        raise typer.BadParameter(
+            "No configured experiment models were detected in Ollama. "
+            "Pass --allow-auto-detected to also offer any non-vision tag from `ollama list`."
+        )
 
     wizard_intro = [
         *WIZARD_BANNER,
         "Choose models first, then choose test suites.",
-        "Detected Ollama models mapped to this experiment:",
+        "Detected Ollama models mapped to this experiment:"
+        + (" (curated + auto-detected)" if auto_names else ""),
     ]
-    model_options = [f"{model.name}  [{model.artifact_path or model.revision}]" for model in available_configs]
+    model_options = [
+        (
+            f"{model.name}  [{model.artifact_path or model.revision}]"
+            + ("  (auto-detected)" if model.name in auto_names else "")
+        )
+        for model in available_configs
+    ]
     selected_model_indexes = prompt_multiselect(
         "Select models",
         model_options,
