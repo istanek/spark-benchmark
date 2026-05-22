@@ -82,6 +82,16 @@ work.
   You then tick the ones you want to test, tick which test suites to
   run, and watch a scrolling log while the benchmark runs.
 
+  The menu items are:
+    Run      — pick models + canonical suites, run them now.
+    Custom   — pick one of your own YAML test suites (BYOT, see Way 4).
+    Models   — list every Ollama model and whether it is ready to run.
+    Suites   — list the canonical suites and their task counts.
+    Info     — show the JSON metadata of one canonical suite.
+    Chat     — open a small chat with a single model.
+    Refresh  — re-read configs / re-probe Ollama.
+    Quit     — leave the TUI (q also works anywhere).
+
   Anything visual / blue / boxed comes from this mode. It is the easiest
   way to figure out what the tool can do.
 
@@ -151,6 +161,15 @@ work.
   one in examples/custom-tests/quick/, list your prompts, and the
   harness runs each prompt against each model and writes a
   side-by-side Markdown report you can read on screen.
+
+  Don't want to type the flags? The full-screen menu (Way 1) has a
+  "Custom" entry that walks you through the same flow:
+    spark-bench
+      → arrow to "Custom" → Enter
+      → pick a suite from the discovered list (your example
+        templates + any suite you've already run once)
+      → tick the models you want
+      → watch the run scroll by, get the path to summary.md at the end
 
   No scoring in v0.2.0 — Mode A just shows the answers and how fast
   each model produced them. Scoring (was the answer correct? did the

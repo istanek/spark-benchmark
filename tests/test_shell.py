@@ -1,9 +1,15 @@
+import json
+import tempfile
+from pathlib import Path
+
 from spark_benchmark.models import BackendConfig, BackendKind, ModelConfig
 from spark_benchmark.shell import (
     SUITE_REGISTRY,
+    CustomSuiteCandidate,
     DetectedOllamaModel,
     ShellContext,
     classify_models,
+    discover_custom_suites,
     is_embedding_model,
     is_vision_model,
     load_default_context,
@@ -108,6 +114,70 @@ def test_load_suite_metadata_returns_expected_fields() -> None:
 def test_load_suite_metadata_unknown_suite_returns_none() -> None:
     ctx = load_default_context()
     assert load_suite_metadata(ctx.repo_root, "no_such_suite") is None
+
+
+def test_discover_custom_suites_finds_examples_and_recent_runs() -> None:
+    """Discovery surfaces shipped examples and recent custom-runs."""
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        # Shipped example.
+        ex_dir = repo / "examples" / "custom-tests" / "demo"
+        ex_dir.mkdir(parents=True)
+        ex_yaml = ex_dir / "suite.yaml"
+        ex_yaml.write_text("name: demo\n", encoding="utf-8")
+        # User-written suite + two prior custom runs (older + newer) pointing
+        # at the same suite_path; the newer run-id wins.
+        user_yaml = repo / "user-suite.yaml"
+        user_yaml.write_text("name: user\n", encoding="utf-8")
+        for run_id in ("20260520-100000", "20260522-090000"):
+            run_dir = repo / "results" / "custom" / "user" / run_id
+            run_dir.mkdir(parents=True)
+            (run_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "kind": "custom",
+                        "run_id": run_id,
+                        "suite": "user",
+                        "suite_path": str(user_yaml.resolve()),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+        results = discover_custom_suites(repo)
+        # 1 example + 1 deduped recent run.
+        assert len(results) == 2
+        assert all(isinstance(c, CustomSuiteCandidate) for c in results)
+        assert results[0].origin == "example"
+        assert results[0].path == ex_yaml.resolve()
+        assert results[1].origin == "recent"
+        assert results[1].path == user_yaml.resolve()
+        assert results[1].last_run == "20260522-090000"
+
+
+def test_discover_custom_suites_empty_when_nothing_present() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        assert discover_custom_suites(Path(tmp)) == []
+
+
+def test_discover_custom_suites_skips_recent_pointing_at_missing_file() -> None:
+    """A manifest pointing at a now-deleted suite_path is ignored."""
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        run_dir = repo / "results" / "custom" / "ghost" / "20260522-100000"
+        run_dir.mkdir(parents=True)
+        (run_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "kind": "custom",
+                    "run_id": "20260522-100000",
+                    "suite": "ghost",
+                    "suite_path": str(repo / "missing-suite.yaml"),
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert discover_custom_suites(repo) == []
 
 
 def _run_all() -> int:

@@ -13,18 +13,27 @@ from rich.console import Console
 from rich.panel import Panel
 
 from spark_benchmark.config import load_backend, load_experiment, load_model_config, load_platform
+from spark_benchmark.custom_suites import (
+    CustomSuiteDefinition,
+    load_custom_suite,
+    run_custom_suite_quick,
+    slugify_suite_name,
+    validate_custom_suite,
+)
 from spark_benchmark.model_registry import (
     DetectedOllamaModel,
     OllamaModelInfo,
     classify_detected,
     detect_ollama_models,
+    find_config_by_name_or_tag,
     is_embedding_model,
     is_vision_model,
+    resolve_runnable_models,
 )
 from spark_benchmark.models import BackendConfig, ExperimentSpec, ModelConfig, PlatformConfig
 from spark_benchmark.orchestration import BenchmarkPlan, run_benchmark_bundle
 from spark_benchmark.reporting import aggregate_runs, render_cli_benchmark_summary, write_report
-from spark_benchmark.results_bundle import make_run_id
+from spark_benchmark.results_bundle import make_run_id, write_json
 from spark_benchmark.runners.registry import build_backend
 
 
@@ -56,6 +65,7 @@ SUITE_REGISTRY: dict[str, dict[str, str]] = {
 
 MENU_ITEMS: list[tuple[str, str]] = [
     ("run", "Run"),
+    ("custom", "Custom"),
     ("models", "Models"),
     ("suites", "Suites"),
     ("info", "Info"),
@@ -137,6 +147,80 @@ def load_suite_metadata(repo_root: Path, suite_name: str) -> dict[str, Any] | No
     if not path.exists():
         return None
     return json.loads(path.read_text())
+
+
+@dataclass
+class CustomSuiteCandidate:
+    """A custom-suite YAML/JSON that the TUI is willing to surface."""
+
+    path: Path
+    origin: str  # "example" | "recent"
+    last_run: str | None = None  # run-id from manifest.json, only for origin="recent"
+
+    def label(self) -> str:
+        try:
+            display = self.path.relative_to(Path.cwd())
+        except ValueError:
+            display = self.path
+        if self.origin == "recent" and self.last_run:
+            return f"{self.path.name}  (last run {self.last_run})  [{display}]"
+        return f"{self.path.name}  ({self.origin})  [{display}]"
+
+
+def discover_custom_suites(repo_root: Path) -> list[CustomSuiteCandidate]:
+    """Find custom-suite YAMLs the user is likely to want to re-run.
+
+    Looks in two well-known places:
+
+    - ``examples/custom-tests/**/suite.yaml`` — shipped templates,
+    - ``results/custom/<slug>/<run-id>/manifest.json`` — pulls
+      ``suite_path`` from each manifest and dedupes by absolute path,
+      keeping the newest ``run-id`` per path.
+
+    Returns the list ordered with examples first, then recent-runs
+    (newest run-id first within that group).
+    """
+    candidates: list[CustomSuiteCandidate] = []
+
+    examples_root = repo_root / "examples" / "custom-tests"
+    if examples_root.is_dir():
+        for path in sorted(examples_root.glob("**/suite.yaml")):
+            candidates.append(CustomSuiteCandidate(path=path.resolve(), origin="example"))
+        for path in sorted(examples_root.glob("**/suite.json")):
+            candidates.append(CustomSuiteCandidate(path=path.resolve(), origin="example"))
+
+    custom_runs_root = repo_root / "results" / "custom"
+    recent: dict[Path, CustomSuiteCandidate] = {}
+    if custom_runs_root.is_dir():
+        manifests: list[tuple[str, Path]] = []
+        for manifest_path in custom_runs_root.glob("*/*/manifest.json"):
+            try:
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            run_id = str(payload.get("run_id") or manifest_path.parent.name)
+            suite_path_raw = payload.get("suite_path")
+            if not suite_path_raw:
+                continue
+            suite_path = Path(suite_path_raw)
+            if not suite_path.exists():
+                continue
+            manifests.append((run_id, suite_path.resolve()))
+        # Sort newest run-id last so the dict keeps the newest one per suite.
+        for run_id, suite_path in sorted(manifests, key=lambda x: x[0]):
+            recent[suite_path] = CustomSuiteCandidate(
+                path=suite_path, origin="recent", last_run=run_id
+            )
+
+    seen = {c.path for c in candidates}
+    for path, candidate in sorted(
+        recent.items(), key=lambda x: (x[1].last_run or ""), reverse=True
+    ):
+        if path in seen:
+            continue
+        candidates.append(candidate)
+
+    return candidates
 
 
 def chat_command(ctx: ShellContext, arg: str) -> None:
@@ -548,6 +632,8 @@ class TUIApp:
                 self.show_info(stdscr)
             elif action == "run":
                 self.do_run(stdscr)
+            elif action == "custom":
+                self.do_custom(stdscr)
             elif action == "chat":
                 self.do_chat(stdscr)
         except Exception as exc:  # noqa: BLE001
@@ -725,6 +811,200 @@ class TUIApp:
         self.log_renderable(summary)
         self.log_blank()
         self.log(f"Done. Results in {bundle_dir}")
+
+    def do_custom(self, stdscr: Any) -> None:
+        """Pick a custom (BYOT) suite YAML/JSON, validate it, and run Mode A."""
+        candidates = discover_custom_suites(self.ctx.repo_root)
+        if not candidates:
+            self.log_blank()
+            self.log("── Custom (BYOT) ──")
+            self.log("  No custom suites found.")
+            self.log("")
+            self.log("  Drop a YAML at one of these locations and come back:")
+            self.log("    examples/custom-tests/<name>/suite.yaml   (shipped layout)")
+            self.log("    results/custom/<slug>/<run-id>/           (auto, after a run)")
+            self.log("")
+            self.log("  Template:   examples/custom-tests/quick/suite.yaml")
+            self.log("  Spec:       docs/custom-tests-spec.md")
+            return
+
+        suite_choice = _curses_singleselect(
+            stdscr,
+            "Pick a custom suite to run:",
+            [c.label() for c in candidates],
+            header_lines=BANNER_LINES,
+        )
+        if suite_choice is None:
+            return
+        candidate = candidates[suite_choice]
+
+        self.log_blank()
+        self.log("── Custom (BYOT) ──")
+        self.log(f"  Suite file: {candidate.path}")
+
+        try:
+            loaded = load_custom_suite(candidate.path)
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"  Failed to load suite: {exc}")
+            return
+        self.log(f"  Suite:      {loaded.name} (v{loaded.version}, mode={loaded.mode})")
+        self.log(f"  Tasks:      {len(loaded.tasks)}")
+
+        # Use the same model resolver run-custom uses on the CLI:
+        # default to allow_auto_detected=True for custom suites.
+        resolved = resolve_runnable_models(
+            backend_config=self.ctx.backend_config,
+            experiment_model_configs=self.ctx.model_configs,
+            allow_auto_detected=True,
+        )
+        if not resolved.classified:
+            self.log("  No models detected via Ollama. Is the daemon running?")
+            return
+
+        available_names = [m.name for m in resolved.configs]
+        issues = validate_custom_suite(loaded, available_models=available_names)
+        errors = [i for i in issues if i.severity == "error"]
+        warnings = [i for i in issues if i.severity != "error"]
+        for issue in warnings:
+            self.log(f"  WARN: {issue.render()}")
+        if errors:
+            for issue in errors:
+                self.log(f"  ERROR: {issue.render()}")
+            self.log("  → fix the suite file and try again.")
+            return
+
+        suite_defaults = self._suite_default_model_indices(loaded, resolved.classified)
+        model_labels: list[str] = []
+        disabled: set[int] = set()
+        defaults: set[int] = set()
+        for idx, item in enumerate(resolved.classified):
+            if not item.has_config:
+                reason = item.disable_reason or "no config"
+                model_labels.append(f"{item.tag}  ({reason})")
+                disabled.add(idx)
+                continue
+            if item.auto_detected:
+                model_labels.append(f"{item.tag}  (auto)")
+            else:
+                model_labels.append(f"{item.display_name}  [{item.tag}]")
+            if suite_defaults is None or idx in suite_defaults:
+                defaults.add(idx)
+
+        picked = _curses_multiselect(
+            stdscr,
+            "Select models for this custom run:",
+            model_labels,
+            preselected=defaults,
+            disabled=disabled,
+            header_lines=BANNER_LINES,
+        )
+        if not picked:
+            self.log_blank()
+            self.log("(no models selected)")
+            return
+        selected_configs: list[ModelConfig] = []
+        for idx in picked:
+            cfg = resolved.classified[idx].config
+            if cfg is not None and cfg not in selected_configs:
+                selected_configs.append(cfg)
+        if not selected_configs:
+            self.log_blank()
+            self.log("(no usable models selected)")
+            return
+
+        run_id = make_run_id()
+        run_dir = (
+            self.ctx.repo_root
+            / "results"
+            / "custom"
+            / slugify_suite_name(loaded.name)
+            / run_id
+        )
+        run_dir.mkdir(parents=True, exist_ok=True)
+        write_json(
+            run_dir / "manifest.json",
+            {
+                "kind": "custom",
+                "run_id": run_id,
+                "suite": loaded.name,
+                "suite_version": loaded.version,
+                "suite_path": str(candidate.path),
+                "experiment": self.ctx.experiment.name,
+                "platform": self.ctx.platform.name,
+                "backend": self.ctx.backend_config.name.value,
+                "models": [cfg.name for cfg in selected_configs],
+                "task_count": len(loaded.tasks),
+                "mode": loaded.mode,
+                "auto_detected_models": [
+                    cfg.name
+                    for cfg in resolved.auto_detected_configs
+                    if cfg in selected_configs
+                ],
+                "source": "shell",
+            },
+        )
+
+        self.log_blank()
+        self.log("=== Custom run ===")
+        self.log(f"Models:   {', '.join(cfg.name for cfg in selected_configs)}")
+        self.log(f"Run dir:  {run_dir}")
+        self.log_blank()
+        self.draw(stdscr)
+
+        backend = build_backend(self.ctx.backend_config)
+
+        def progress(message: str) -> None:
+            self.log(message)
+            self.draw(stdscr)
+
+        try:
+            run_custom_suite_quick(
+                suite=loaded,
+                backend=backend,
+                backend_config=self.ctx.backend_config,
+                model_configs=selected_configs,
+                run_dir=run_dir,
+                default_sampling=self.ctx.experiment.sampling,
+                progress_callback=progress,
+                resume=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.log_blank()
+            self.log(f"Run failed mid-flight: {exc}")
+            self.log(f"Partial results: {run_dir / 'results.jsonl'}")
+            return
+
+        summary_md = run_dir / "summary.md"
+        summary_json = run_dir / "summary.json"
+        self.log_blank()
+        self.log("Done.")
+        self.log(f"  results:  {run_dir / 'results.jsonl'}")
+        self.log(f"  summary:  {summary_md}")
+        self.log(f"  json:     {summary_json}")
+
+    @staticmethod
+    def _suite_default_model_indices(
+        suite: CustomSuiteDefinition, classified: list[OllamaModelInfo]
+    ) -> set[int] | None:
+        """Translate ``suite.models`` into indices into ``classified``.
+
+        Returns ``None`` when the suite did not declare a ``models:`` list,
+        which means the TUI should fall back to its own default
+        (preselect everything that has a config).
+        """
+        if not suite.models:
+            return None
+        configs = [item.config for item in classified if item.has_config and item.config]
+        wanted: set[int] = set()
+        for raw in suite.models:
+            cfg = find_config_by_name_or_tag(raw, configs=configs, classified=classified)
+            if cfg is None:
+                continue
+            for idx, item in enumerate(classified):
+                if item.config is cfg:
+                    wanted.add(idx)
+                    break
+        return wanted
 
     def do_chat(self, stdscr: Any) -> None:
         # Chat runs outside the TUI; the user exits it explicitly with /exit,

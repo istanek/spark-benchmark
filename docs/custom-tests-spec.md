@@ -136,6 +136,35 @@ Defaults:
   `results.jsonl` and skips every `(model, task_id)` pair that's already
   there.
 
+## TUI surface (v0.2.1+)
+
+The curses TUI (`spark-bench shell`) gained a top-level **Custom**
+menu entry that mirrors `run-custom` for users who don't want to
+type out experiment + platform flags every time.
+
+What it does:
+
+1. Calls `discover_custom_suites(repo_root)` which walks
+   `examples/custom-tests/**/suite.yaml` plus
+   `results/custom/<slug>/<run-id>/manifest.json` and de-dupes
+   recent runs by absolute `suite_path` (newest run-id wins).
+2. Single-selects a suite, loads it via `load_custom_suite`, and
+   runs `validate_custom_suite` against the same model pool the
+   CLI's `run-custom` would compute (i.e. `--allow-auto-detected`
+   is implicitly ON in the TUI).
+3. Multi-selects models. If the suite declares a `models:` list,
+   only those are preselected; otherwise everything ready is
+   preselected. Vision / embedding tags stay disabled.
+4. Streams `progress_callback` lines into the TUI log, then
+   prints the path to `summary.md` / `summary.json` when done.
+
+Manifests written by the TUI carry `source: shell` so reporting
+code can tell apart "user clicked Custom in the shell" from
+"user ran `spark-bench run-custom` on the CLI". Manual entry of an
+arbitrary suite path is intentionally not exposed in the TUI in
+0.2.1; the discovery list covers the common cases (shipped
+templates + suites the user has already run once).
+
 ## Run bundle layout
 
 Identical shape to canonical suites, plus `kind: custom` in the

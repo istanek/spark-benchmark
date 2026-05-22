@@ -50,8 +50,8 @@ share models, suites, sampling, and reporting.
 
 ### `spark-bench shell` — full curses TUI
 
-Launches a full-screen menu (`Run / Models / Suites / Info / Chat /
-Refresh / Quit`) that lets you:
+Launches a full-screen menu (`Run / Custom / Models / Suites / Info /
+Chat / Refresh / Quit`) that lets you:
 
 - live-detect models from a running Ollama (`/api/tags`), match them
   against the experiment's `configs/models/*.yaml`, and grey out
@@ -61,8 +61,16 @@ Refresh / Quit`) that lets you:
   `ModelConfig` (Ollama defaults) and labeled `auto-detected` in the
   picker. The same logic is shared with `wizard` / `console` /
   `benchmark` / `run` via `--allow-auto-detected`;
-- multiselect models and suites for a benchmark bundle, then watch
-  per-model / per-task progress in a scrolling log pane;
+- multiselect models and suites for a canonical benchmark bundle
+  (`Run`), then watch per-model / per-task progress in a scrolling
+  log pane;
+- run **your own (BYOT) custom suites** without typing flags
+  (`Custom`, since 0.2.1) — discovers `examples/custom-tests/**/suite.yaml`
+  plus any suite you've already run once via
+  `results/custom/<slug>/<run-id>/manifest.json`, single-selects one,
+  validates it, multi-selects models, and writes a fresh run bundle
+  to `results/custom/<slug>/<run-id>/` with `source: shell` in the
+  manifest;
 - drop into the Chat panel to talk to a single picked model without
   leaving the TUI;
 - inspect suite metadata (description, task count, fixture path) before
@@ -181,7 +189,8 @@ All four CLI surfaces share `model_registry.resolve_runnable_models`:
 
 The curses TUI (`spark-bench shell`) always behaves as if the flag were
 on — the operator is in front of the screen and can see the
-`auto-detected` label.
+`auto-detected` label. The same is true of the `Custom` menu entry,
+which mirrors `run-custom`'s default.
 
 ## Current scaffold includes
 

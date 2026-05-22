@@ -12,8 +12,10 @@ If you only read one diagram, read this one:
 │                                ENTRY POINTS                                  │
 │   cli.py (Typer)         shell.py (curses TUI)                               │
 │   ├─ run                 ├─ Run     → do_run                                 │
-│   ├─ console             ├─ Models  → show_models                            │
-│   ├─ benchmark           ├─ Suites  → show_suites                            │
+│   ├─ run-custom          ├─ Custom  → do_custom (BYOT, 0.2.1+)               │
+│   ├─ validate-custom     ├─ Models  → show_models                            │
+│   ├─ console             ├─ Suites  → show_suites                            │
+│   ├─ benchmark           ├─ Info    → show_info                              │
 │   ├─ wizard              ├─ Chat    → do_chat / chat_command                 │
 │   ├─ aggregate           └─ Refresh / Quit                                   │
 │   ├─ report                                                                  │
@@ -212,8 +214,17 @@ A canonical "run a benchmark" path:
     `model_registry` for backwards compatibility.
   - `classify_models(ctx, detected)` is a thin wrapper over
     `model_registry.classify_detected(ctx.model_configs, detected)`.
-  - Menu actions: `do_run`, `show_models`, `show_suites`, `do_chat`,
-    `chat_command` (readline-style chat outside the curses loop).
+  - Menu actions: `do_run`, `do_custom` (BYOT, since 0.2.1),
+    `show_models`, `show_suites`, `show_info`, `do_chat`, `chat_command`
+    (readline-style chat outside the curses loop).
+  - `discover_custom_suites(repo_root)` — lists shipped templates in
+    `examples/custom-tests/**/suite.yaml` plus prior runs from
+    `results/custom/<slug>/<run-id>/manifest.json` (deduped on
+    absolute `suite_path`, newest run-id per suite). Returns
+    `CustomSuiteCandidate` items with an `origin` of `"example"` or
+    `"recent"`. `do_custom` shows them in a single-select, then
+    delegates the actual run to `custom_suites.run_custom_suite_quick`
+    with `--allow-auto-detected` implicitly on.
 
 - **`custom_suites.py`** — Bring-Your-Own-Test (BYOT) subsystem,
   introduced in v0.2.0 and specced in detail at

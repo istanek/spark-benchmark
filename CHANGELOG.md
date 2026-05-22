@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Custom (BYOT) menu item in the curses TUI (`spark-bench shell`).**
+  A new ``Custom`` entry sits next to ``Run`` and walks the user
+  through the same flow as ``spark-bench run-custom`` on the CLI:
+  it discovers suite YAMLs (shipped templates under
+  ``examples/custom-tests/`` plus prior runs under
+  ``results/custom/<slug>/<run-id>/``), loads + validates the
+  selected suite, asks for models in a multiselect that respects
+  the suite's ``models:`` list when present, and streams progress
+  into the log as the run executes. The run bundle is written to
+  ``results/custom/<slug>/<run-id>/`` with ``manifest.json`` tagged
+  ``source: shell`` so reporting can tell TUI runs apart from CLI
+  runs. ``--allow-auto-detected`` is implicitly on for the TUI
+  entry, matching ``spark-bench run-custom``.
+- **`shell.discover_custom_suites(repo_root)` helper** — pure
+  function that returns ``CustomSuiteCandidate`` items, dedupes
+  recent runs by absolute ``suite_path`` (newest ``run-id`` wins),
+  and silently skips manifests pointing at deleted suite files.
+  Covered by three new tests in ``tests/test_shell.py``.
+
 ## [0.2.0] - 2026-05-22
 
 Second public release. Adds the Bring-Your-Own-Test (BYOT) subsystem

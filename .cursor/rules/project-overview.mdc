@@ -55,8 +55,13 @@ Run IDs come from `results_bundle.make_run_id()` (`YYYYMMDDTHHMMSSZ-<8hex>`).
 User-supplied benchmark suites live in `spark_benchmark.custom_suites`
 and ship under `spark-bench run-custom` / `validate-custom`. v0.2.0
 implements **Mode A only** (`mode: quick`, pass-through, no scoring);
-`mode: scored` is rejected at load time. See
-`docs/custom-tests-spec.md` for the full schema, run-bundle layout
+`mode: scored` is rejected at load time. v0.2.1 adds a top-level
+`Custom` entry to the curses TUI (`spark-bench shell`) — it discovers
+suites from `examples/custom-tests/**/suite.yaml` plus prior runs in
+`results/custom/<slug>/<run-id>/manifest.json` (helper:
+`shell.discover_custom_suites`) and writes manifests with
+`source: "shell"` so reporting can tell TUI runs apart from CLI runs.
+See `docs/custom-tests-spec.md` for the full schema, run-bundle layout
 (`results/custom/<slug>/<run-id>/` with `kind: "custom"` manifest),
 and the v0.3+ roadmap. Custom suites are **deliberately separate**
 from `suites.SuiteDefinition` — never reuse the canonical schema for
