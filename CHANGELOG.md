@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-22
+
+Second public release. Adds the Bring-Your-Own-Test (BYOT) subsystem
+in Mode A (pass-through, no scoring), unifies model auto-detection
+across every CLI surface behind one shared registry, and switches the
+GitLab project page to the plain-language `README.txt`.
+
 ### Changed
 
 - **Project landing page is now `README.txt` (plain language).** The
@@ -155,5 +162,6 @@ Initial public release of the spark-benchmark scaffold.
   `docs/extensions-spec.md` but not yet implemented.
 - TRT-LLM and vLLM backends fall through to the stub adapter.
 
-[Unreleased]: https://gitlab.com/istanek/spark-benchmark/-/compare/v0.1.0...HEAD
+[Unreleased]: https://gitlab.com/istanek/spark-benchmark/-/compare/v0.2.0...HEAD
+[0.2.0]: https://gitlab.com/istanek/spark-benchmark/-/tags/v0.2.0
 [0.1.0]: https://gitlab.com/istanek/spark-benchmark/-/tags/v0.1.0
