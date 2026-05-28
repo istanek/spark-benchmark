@@ -68,8 +68,10 @@ If you only read one diagram, read this one:
 │                      write_result (JSONL), write_json                        │
 │  runtime.py          build_manifest / build_environment_snapshot             │
 │  reporting.py        aggregate_runs → render_markdown_report                 │
-│                                     → render_html_report                     │
+│                                     → render_html_report ──┐                 │
 │                                     → render_cli_benchmark_summary           │
+│  reporting_html.py   render_canonical_report_html ◀────────┘                 │
+│                      render_custom_summary_html  (single-file, no JS)        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -88,6 +90,7 @@ spark-benchmark/
 │   ├─ code_generation.py       HumanEval-style sandboxed code suite
 │   ├─ sustained_throughput.py  long-decode soak + NVML/nvidia-smi telemetry
 │   ├─ reporting.py             aggregate JSONL → md / html / CLI summary
+│   ├─ reporting_html.py        single-file standalone HTML (canonical + BYOT)
 │   ├─ results_bundle.py        run-id, write_manifest, write_result (JSONL)
 │   ├─ runtime.py               build_manifest / EnvironmentSnapshot
 │   ├─ evaluator.py             (stub; reserved)
@@ -165,7 +168,10 @@ A canonical "run a benchmark" path:
      `manifest.json` + `summary.json` + `results.jsonl`, and aggregates by suite
      × model (passes/total, ttft, decode tokens, etc.).
    - `render_markdown_report` / `render_html_report` / `render_cli_benchmark_summary`
-     consume the aggregate.
+     consume the aggregate. The HTML renderer lives in
+     `reporting_html.py` (single-file, no-JS, no-CDN) and is also
+     reused by custom (BYOT) and `quick` runs to emit
+     `summary.html` next to `summary.md`.
 
 ## 3. Module reference
 
@@ -371,8 +377,36 @@ write `results.jsonl` row-by-row; finish with `summary.json` (+ optionally
     bins by suite × model.
   - Handles two row shapes: flat `row.generation.metrics` (reliability/speed)
     vs nested `row.samples[*].generation.metrics` (code_generation).
-  - Render layers: `render_markdown_report` (publication), `render_html_report`
-    (dashboard-ish), `render_cli_benchmark_summary` (TUI/CLI live output).
+  - Render layers: `render_markdown_report` (publication),
+    `render_html_report` (delegates to `reporting_html` —
+    standalone styled page), `render_cli_benchmark_summary`
+    (TUI/CLI live output).
+  - `write_report(path, format, aggregate)` accepts
+    `"markdown"`, `"html"`, or `"both"`; the benchmark / wizard /
+    shell-run flows pass `"both"` so every bundle ships
+    `report.md` *and* `report.html` next to each other.
+- **`reporting_html.py`** — single-file standalone HTML rendering
+  for both flavours of run output. No JavaScript, no CDN, no
+  external assets — embedded CSS + inline SVG bar charts only.
+  - `render_canonical_report_html(aggregate, request=None,
+    selected_models=None, selected_suites=None)` produces the
+    bundle-level HTML rollup: header / meta, verdict +
+    recommendation card, overall ranking table with bar chart,
+    per-suite tables with pass-rate bar charts and narrative
+    commentary, and a "recent runs" tail. Re-uses the canonical
+    narrative helpers (`_overall_rank_rows`, `_suite_commentary`,
+    `_verdict_paragraph`) from `reporting.py` so the HTML and CLI
+    summaries stay in sync.
+  - `render_custom_summary_html(summary)` produces the BYOT
+    rollup: header card with suite name / version / mode /
+    backend / task count, per-model telemetry table with mean
+    decode-tps bar chart, and one collapsible `<details>` block
+    per task with each model's reply side-by-side. Errored cells
+    are highlighted.
+  - All user-supplied content (prompts, model output, error
+    messages) is HTML-escaped via `html.escape(quote=True)` so
+    YAML suites containing `<script>` or `<img onerror=...>`
+    payloads can't escape their `<pre>` containers.
 
 ### Telemetry
 

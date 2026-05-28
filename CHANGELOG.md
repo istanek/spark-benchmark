@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Polished standalone HTML reports.** New
+  ``spark_benchmark.reporting_html`` module renders both flavours of
+  run output as a single self-contained HTML page — no JavaScript,
+  no CDN, no external assets. Open the file from a USB stick, attach
+  it to an email, paste it into a wiki: it just works.
+  - Canonical bundles now emit ``report.html`` next to ``report.md``
+    with overall ranking, per-suite tables, narrative commentary,
+    verdict / recommendation, and inline SVG bar charts for overall
+    score and per-suite pass rates.
+  - Custom (BYOT) and ``quick`` runs now emit ``summary.html`` next
+    to ``summary.md`` / ``summary.json`` with a per-model telemetry
+    table, mean-decode-tps bar chart, and one collapsible
+    ``<details>`` block per task showing every model's reply
+    side-by-side. Errored cells are highlighted in red.
+  - ``write_report`` learned a new ``"both"`` format that writes the
+    ``.md`` and ``.html`` siblings in one call. Existing
+    ``"markdown"`` / ``"html"`` paths continue to work unchanged.
+  - All renderers HTML-escape user content (prompt text, model
+    output, error messages) so YAML suites containing ``<script>``
+    or ``<img onerror=...>`` payloads can't escape the ``<pre>`` /
+    ``<code>`` containers.
+- **CLI / TUI surface for HTML.** ``spark-bench benchmark``,
+  ``wizard``, ``aggregate``, ``run-custom``, and ``quick`` all log
+  the HTML path next to the existing markdown / JSON paths.
+  ``aggregate``'s JSON output gained ``"aggregate_html"`` and the
+  custom commands gained ``"summary_html"``. The TUI ``Run`` /
+  ``Custom`` / ``Quick`` flows print the HTML path in their final
+  log block.
+- **``tests/test_reporting_html.py``** — 11 plain-Python tests
+  covering document well-formedness (doctype, no script tags,
+  embedded ``<style>``), canonical-renderer ranking / verdict /
+  per-suite blocks, custom-renderer telemetry / per-task details,
+  HTML-escaping of user-supplied prompts and outputs, SVG bar-chart
+  edge cases (empty input, value formatting, clamping), and a
+  ``write_report(..., "both")`` integration assertion that the
+  ``.md`` and ``.html`` siblings land next to each other.
+
 - **Quick (ad-hoc one-shot prompts).** New
   ``spark_benchmark.quick`` module surfaces the lightest BYOT
   workflow yet — type one prompt, fan it out to every model you
@@ -59,6 +96,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ``docs/custom-tests-spec.md``, and
   ``.cursor/rules/project-overview.mdc`` were extended to cover
   the new entry point.
+- ``reporting.render_html_report`` is now a thin delegate to
+  ``reporting_html.render_canonical_report_html``. The previous
+  unstyled stub (a bare ``<html><body>`` with one un-themed table
+  per suite) is gone — anything that called it now produces the
+  full styled report instead, which is a deliberate behaviour
+  change with no downstream API change.
+- The benchmark / wizard / shell-run flows now write the report
+  bundle as ``"both"`` (``report.md`` *and* ``report.html``) by
+  default. ``aggregate`` likewise writes both.
 
 ## [0.2.1] - 2026-05-28
 

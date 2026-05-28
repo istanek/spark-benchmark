@@ -816,7 +816,8 @@ class TUIApp:
         )
         aggregate = aggregate_runs(bundle_dir)
         report_path = bundle_dir / "report.md"
-        write_report(report_path, "markdown", aggregate)
+        report_html_path = bundle_dir / "report.html"
+        write_report(report_path, "both", aggregate)
         summary = render_cli_benchmark_summary(
             request="interactive shell selection",
             selected_models=plan.selected_models,
@@ -828,6 +829,7 @@ class TUIApp:
         self.log_renderable(summary)
         self.log_blank()
         self.log(f"Done. Results in {bundle_dir}")
+        self.log(f"HTML report: {report_html_path}")
 
     def do_custom(self, stdscr: Any) -> None:
         """Pick a custom (BYOT) suite YAML/JSON, validate it, and run Mode A."""
@@ -992,11 +994,13 @@ class TUIApp:
             return
 
         summary_md = run_dir / "summary.md"
+        summary_html = run_dir / "summary.html"
         summary_json = run_dir / "summary.json"
         self.log_blank()
         self.log("Done.")
         self.log(f"  results:  {run_dir / 'results.jsonl'}")
         self.log(f"  summary:  {summary_md}")
+        self.log(f"  html:     {summary_html}")
         self.log(f"  json:     {summary_json}")
 
     @staticmethod
@@ -1177,6 +1181,7 @@ class TUIApp:
         self.log("Done.")
         self.log(f"  results:  {run_dir / 'results.jsonl'}")
         self.log(f"  summary:  {run_dir / 'summary.md'}")
+        self.log(f"  html:     {run_dir / 'summary.html'}")
         self.log(f"  json:     {run_dir / 'summary.json'}")
 
         # Post-run "save?" prompt — outside curses so prompt/confirm work.

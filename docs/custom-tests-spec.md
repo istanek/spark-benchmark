@@ -227,7 +227,8 @@ What it does:
    only those are preselected; otherwise everything ready is
    preselected. Vision / embedding tags stay disabled.
 4. Streams `progress_callback` lines into the TUI log, then
-   prints the path to `summary.md` / `summary.json` when done.
+   prints the path to `summary.md` / `summary.html` /
+   `summary.json` when done.
 
 Manifests written by the TUI carry `source: shell` so reporting
 code can tell apart "user clicked Custom in the shell" from
@@ -247,7 +248,11 @@ results/custom/<slug>/<run-id>/
 ├─ manifest.json     # {kind: "custom", suite, suite_version, models, ...}
 ├─ results.jsonl     # one row per (model, task_id) — append-only
 ├─ summary.json      # per-model aggregate metrics + raw rows
-└─ summary.md        # side-by-side Markdown (telemetry table + per-task)
+├─ summary.md        # side-by-side Markdown (telemetry table + per-task)
+└─ summary.html      # standalone styled HTML — telemetry table, mean
+                     # decode-tps bar chart, one collapsible <details>
+                     # block per task with each model's reply.
+                     # Single file, no JS, no CDN — open it anywhere.
 ```
 
 A row in `results.jsonl` looks like:
@@ -389,7 +394,7 @@ custom suites into the canonical tree.
 
 All of these must hold before `0.2.0` is tagged:
 
-- `spark-bench run-custom examples/custom-tests/quick/suite.yaml --experiment ... --platform spark` produces a non-empty `results.jsonl`, `summary.json`, and `summary.md` under `results/custom/example-quick-test/<run-id>/`.
+- `spark-bench run-custom examples/custom-tests/quick/suite.yaml --experiment ... --platform spark` produces a non-empty `results.jsonl`, `summary.json`, `summary.md`, and `summary.html` under `results/custom/example-quick-test/<run-id>/`.
 - `spark-bench validate-custom <bad.yaml>` exits non-zero and prints a clear `ERROR ...` line for: duplicate task IDs, empty prompts, `mode: scored`, unknown `models[]`.
 - The runner records errors as rows and keeps going (covered by `test_run_custom_suite_records_errors_without_aborting`).
 - Re-running against the same `--output-dir` skips already-completed pairs (covered by `test_run_custom_suite_resume_skips_already_done_pairs`).

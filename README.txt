@@ -172,7 +172,9 @@ work.
       → pick a suite from the discovered list (your example
         templates + any suite you've already run once)
       → tick the models you want
-      → watch the run scroll by, get the path to summary.md at the end
+      → watch the run scroll by, get the path to summary.md /
+        summary.html at the end (open the .html in your browser
+        for the prettiest view)
 
   No scoring in v0.2.0 — Mode A just shows the answers and how fast
   each model produced them. Scoring (was the answer correct? did the
@@ -235,9 +237,10 @@ work.
         in the Custom menu next time.
 
   Output goes to results/custom/<slug>/<run-id>/, exactly like
-  Way 4. summary.md is what you actually want to read — it has a
-  small telemetry table and one section per task showing each
-  model's reply as a fenced block.
+  Way 4. summary.md is what you read in the terminal; summary.html
+  is what you open in a browser — same content, but with a small
+  telemetry chart and collapsible per-task blocks. Both are
+  standalone files, no upload anywhere.
 
 
   Way 6 — describe what you want in a sentence
@@ -320,7 +323,15 @@ with one subdirectory per test suite. Inside each you get:
     summary.json    per-model pass rate, latency, throughput
     summary.md      a readable table
 
-The whole run also gets a top-level report.md with the overall ranking.
+The whole run also gets two top-level reports with the overall ranking:
+
+    report.md       Markdown — good for committing to a wiki / pasting
+                    into GitHub
+    report.html     standalone HTML — open it in any browser, share by
+                    email, attach to a PR. Single file. No JavaScript,
+                    no internet connection required. Includes the
+                    overall ranking, per-suite tables with little bar
+                    charts, the verdict, and a recommendation.
 
 Custom (Bring-Your-Own-Test) and Quick runs (Way 4 and Way 5) write
 to a separate tree so they cannot be confused with the canonical
@@ -330,9 +341,15 @@ numbers:
         manifest.json   tagged kind: "custom"
         results.jsonl   one row per (model, task)
         summary.json    per-model telemetry aggregates
-        summary.md      side-by-side report (telemetry table on top,
+        summary.md      side-by-side Markdown (telemetry table on top,
                         then one section per task with each model's
                         reply rendered as a fenced block)
+        summary.html    same content as standalone HTML — telemetry
+                        table, mean-decode-tps bar chart, and one
+                        collapsible block per task with each model's
+                        reply side-by-side. Errored cells in red.
+                        Tip: this is usually the nicest thing to look
+                        at after a quick run.
 
 Either way, nothing is uploaded anywhere. The results stay on your
 machine.

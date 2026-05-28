@@ -522,7 +522,8 @@ def benchmark(
     )
     aggregate = aggregate_runs(bundle_dir)
     report_path = bundle_dir / "report.md"
-    write_report(report_path, "markdown", aggregate)
+    report_html_path = bundle_dir / "report.html"
+    write_report(report_path, "both", aggregate)
     summary = render_cli_benchmark_summary(
         request=request_text,
         selected_models=plan.selected_models,
@@ -531,6 +532,7 @@ def benchmark(
         report_path=report_path,
     )
     print(summary)
+    print(f"HTML report: {report_html_path}")
 
 
 @app.command()
@@ -647,7 +649,8 @@ def wizard(
     )
     aggregate = aggregate_runs(bundle_dir)
     report_path = bundle_dir / "report.md"
-    write_report(report_path, "markdown", aggregate)
+    report_html_path = bundle_dir / "report.html"
+    write_report(report_path, "both", aggregate)
     summary = render_cli_benchmark_summary(
         request="interactive wizard selection",
         selected_models=plan.selected_models,
@@ -656,6 +659,7 @@ def wizard(
         report_path=report_path,
     )
     print(summary)
+    print(f"HTML report: {report_html_path}")
 
 
 @app.command()
@@ -664,7 +668,8 @@ def aggregate(runs: Path = typer.Option(..., exists=True, file_okay=False, dir_o
     summary = aggregate_runs(runs)
     json_path = write_json(runs / "aggregate.json", summary)
     md_path = runs / "aggregate.md"
-    write_report(md_path, "markdown", summary)
+    html_path = runs / "aggregate.html"
+    write_report(md_path, "both", summary)
     print(
         json.dumps(
             {
@@ -672,6 +677,7 @@ def aggregate(runs: Path = typer.Option(..., exists=True, file_okay=False, dir_o
                 "runs_dir": str(runs),
                 "aggregate_json": str(json_path),
                 "aggregate_markdown": str(md_path),
+                "aggregate_html": str(html_path),
             },
             ensure_ascii=False,
             indent=2,
@@ -886,6 +892,7 @@ def run_custom_command(
                 "run_dir": str(run_dir),
                 "results": str(run_dir / "results.jsonl"),
                 "summary_md": str(run_dir / "summary.md"),
+                "summary_html": str(run_dir / "summary.html"),
                 "summary_json": str(run_dir / "summary.json"),
                 "task_count": len(loaded.tasks),
                 "models": [cfg.name for cfg in selected_configs],
@@ -1096,6 +1103,7 @@ def quick_command(
                 "run_dir": str(run_dir),
                 "results": str(run_dir / "results.jsonl"),
                 "summary_md": str(run_dir / "summary.md"),
+                "summary_html": str(run_dir / "summary.html"),
                 "summary_json": str(run_dir / "summary.json"),
                 "saved_suite_yaml": str(saved_path) if saved_path is not None else None,
                 "task_id": QUICK_TASK_ID,

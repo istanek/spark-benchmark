@@ -14,8 +14,9 @@ What it does today
 - Stream per-task progress to the caller.
 - Append every row to ``results.jsonl`` (resume-friendly: rerunning the
   same ``run_dir`` skips already-completed `(model, task_id)` pairs).
-- Write a side-by-side ``summary.md`` and machine-readable
-  ``summary.json`` next to the JSONL.
+- Write a side-by-side ``summary.md``, a polished standalone
+  ``summary.html`` (no JS, no CDN — open it anywhere), and a
+  machine-readable ``summary.json`` next to the JSONL.
 
 What it does **not** do (yet)
 -----------------------------
@@ -357,6 +358,14 @@ def run_custom_suite_quick(
     summary = build_custom_summary(suite, rows, backend_config)
     write_json(run_dir / "summary.json", summary)
     (run_dir / "summary.md").write_text(render_custom_summary_markdown(summary), encoding="utf-8")
+    # Local import keeps the canonical reporting graph free of a hard
+    # dependency on the BYOT-only HTML helper, and avoids paying the
+    # import cost on every CLI startup.
+    from spark_benchmark.reporting_html import render_custom_summary_html
+
+    (run_dir / "summary.html").write_text(
+        render_custom_summary_html(summary), encoding="utf-8"
+    )
     return summary
 
 

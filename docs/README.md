@@ -99,9 +99,11 @@ PYTHONPATH=src python3 -m spark_benchmark.cli wizard \
 
 `↑`/`↓` move, `Space` toggles a model or suite, `Enter` confirms. After
 two screens (models, then suites) the harness runs the matching bundle
-end-to-end and prints a CLI summary plus `report.md` path. With
-`--allow-auto-detected` the picker shows every non-vision Ollama tag,
-flagged as `auto-detected`.
+end-to-end and prints a CLI summary plus the paths to `report.md` and
+`report.html` (a single-file standalone HTML report — no JS, no CDN —
+with the overall ranking, per-suite tables, inline SVG bar charts, and
+the verdict / recommendation). With `--allow-auto-detected` the picker
+shows every non-vision Ollama tag, flagged as `auto-detected`.
 
 ### `spark-bench console` — single-model REPL
 
@@ -167,6 +169,9 @@ What you get under `results/custom/<slug>/<run-id>/`:
   and the runner skips already-done pairs),
 - `summary.md` (per-model telemetry table at the top, then one section
   per task with each model's reply rendered as a fenced block),
+- `summary.html` (standalone styled HTML — telemetry table, mean
+  decode-tps bar chart, and one collapsible `<details>` block per task
+  with each model's reply side-by-side, errored cells highlighted),
 - `summary.json` (machine-readable aggregates).
 
 `run-custom` defaults to `--allow-auto-detected` because the user
@@ -182,8 +187,8 @@ a local LLM-as-judge.
 ### `spark-bench quick` — one prompt, all models, no YAML
 
 The lightest BYOT entry point. Type one prompt on the command line,
-get the same side-by-side `summary.md` `run-custom` produces, no
-YAML required.
+get the same side-by-side `summary.md` / `summary.html` `run-custom`
+produces, no YAML required.
 
 ```bash
 PYTHONPATH=src python3 -m spark_benchmark.cli quick \

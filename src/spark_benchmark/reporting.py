@@ -232,29 +232,37 @@ def render_markdown_report(aggregate: dict[str, Any]) -> str:
 
 
 def render_html_report(aggregate: dict[str, Any]) -> str:
-    parts = [
-        "<html><body>",
-        "<h1>spark-benchmark report</h1>",
-        f"<p><strong>runs root:</strong> {aggregate['runs_root']}<br><strong>total runs:</strong> {aggregate['total_runs']}</p>",
-    ]
-    for suite in aggregate["suites"]:
-        parts.append(f"<h2>{suite['suite']}</h2>")
-        parts.append(
-            "<table border='1' cellspacing='0' cellpadding='6'><tr><th>model</th><th>passes</th><th>total</th><th>pass_rate</th><th>runs</th><th>avg_ttft_ms</th><th>avg_tok_s</th></tr>"
-        )
-        for model in suite["models"]:
-            ttft = "-" if model["avg_ttft_ms"] is None else model["avg_ttft_ms"]
-            tok_s = "-" if model["avg_tokens_per_s"] is None else model["avg_tokens_per_s"]
-            parts.append(
-                f"<tr><td>{model['model']}</td><td>{model['passes']}</td><td>{model['total']}</td><td>{model['pass_rate']:.2%}</td><td>{model['runs']}</td><td>{ttft}</td><td>{tok_s}</td></tr>"
-            )
-        parts.append("</table>")
-    parts.append("</body></html>\n")
-    return "".join(parts)
+    """Render the canonical aggregate as a polished standalone HTML page.
+
+    Implementation lives in :mod:`spark_benchmark.reporting_html` to keep
+    the styling / SVG plumbing separate from the data-aggregation logic
+    in this module. The function signature is preserved so existing
+    callers (CLI ``report`` command, ad-hoc scripts) keep working.
+    """
+    # Local import avoids a top-level cycle: reporting_html imports
+    # narrative helpers (_overall_rank_rows, _suite_commentary,
+    # _verdict_paragraph, _find_suite) from this module.
+    from spark_benchmark.reporting_html import render_canonical_report_html
+
+    return render_canonical_report_html(aggregate)
 
 
 def write_report(output: Path, report_format: str, aggregate: dict[str, Any]) -> None:
+    """Write the aggregate to ``output`` in the requested format.
+
+    ``report_format`` accepts ``"markdown"`` (default), ``"html"``, or
+    ``"both"``. For ``"both"``, the path's suffix is rewritten so the
+    Markdown copy ends in ``.md`` and the HTML copy in ``.html`` —
+    callers that want fine-grained control should call the renderers
+    directly.
+    """
     output.parent.mkdir(parents=True, exist_ok=True)
+    if report_format == "both":
+        md_path = output.with_suffix(".md")
+        html_path = output.with_suffix(".html")
+        md_path.write_text(render_markdown_report(aggregate), encoding="utf-8")
+        html_path.write_text(render_html_report(aggregate), encoding="utf-8")
+        return
     body = render_markdown_report(aggregate)
     if report_format == "html":
         body = render_html_report(aggregate)

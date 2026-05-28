@@ -45,10 +45,33 @@ NL parser understands Czech + English keywords (`rychlost`/`speed`,
 ```
 results/benchmarks/<run-id>/
 ├─ plan.json
+├─ report.md             # Markdown rollup
+├─ report.html           # standalone styled HTML rollup (no JS, no CDN)
 └─ <suite>/{manifest.json, results.jsonl, summary.json, summary.md}
 ```
 
 Run IDs come from `results_bundle.make_run_id()` (`YYYYMMDDTHHMMSSZ-<8hex>`).
+Custom (BYOT) and `quick` runs additionally write `summary.html` next to
+`summary.md` inside `results/custom/<slug>/<run-id>/`.
+
+## HTML reporting (`reporting_html.py`)
+
+- `render_canonical_report_html(aggregate, request=None,
+  selected_models=None, selected_suites=None)` produces the
+  bundle-level rollup: header / meta, verdict + recommendation card,
+  overall ranking table with bar chart, per-suite tables with
+  pass-rate bar charts, and a "recent runs" tail.
+- `render_custom_summary_html(summary)` produces the BYOT / quick
+  rollup: per-model telemetry table, mean-decode-tps bar chart, one
+  collapsible `<details>` block per task with each model's reply
+  side-by-side. Errored cells highlighted.
+- All renderers HTML-escape user content (prompts, model output,
+  error messages). No JS, no CDN, no external assets — self-contained
+  so the file works offline / over email / from a USB stick.
+- `reporting.write_report(path, format, aggregate)` accepts
+  `"markdown"`, `"html"`, or `"both"`. The benchmark / wizard /
+  shell-run / aggregate flows pass `"both"` so every bundle ships
+  `report.md` and `report.html` next to each other.
 
 ## Custom (BYOT) suites
 
