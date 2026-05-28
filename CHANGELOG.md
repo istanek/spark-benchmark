@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-28
+
+Polish release on top of 0.2.0. Surfaces the BYOT subsystem in the
+curses TUI (so users no longer have to type ``run-custom`` flags),
+moves the project home from GitLab to GitHub (history and tags carry
+over with identical commit hashes), and fixes a long-standing
+"ESC needs two presses to leave a submenu" bug.
+
+### Fixed
+
+- **ESC double-press in the curses TUI.** ``ncurses`` defaults to
+  ``ESCDELAY=1000``, so a bare ESC sat in the read buffer for a full
+  second while the library waited to see if it was the start of an
+  escape sequence (arrow keys, F-keys). Users learned to hit ESC
+  twice. ``shell.TUIApp.run`` now calls ``curses.set_escdelay(25)``
+  right after ``curses.curs_set(0)`` (the value vim and htop use),
+  with a graceful fallback for environments where the symbol is
+  missing. Single ESC now leaves singleselect / multiselect overlays
+  immediately.
+
 ### Changed
 
 - **Project home moved from GitLab to GitHub
@@ -212,6 +232,7 @@ Initial public release of the spark-benchmark scaffold.
   `docs/extensions-spec.md` but not yet implemented.
 - TRT-LLM and vLLM backends fall through to the stub adapter.
 
-[Unreleased]: https://github.com/istanek/spark-benchmark/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/istanek/spark-benchmark/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/istanek/spark-benchmark/releases/tag/v0.2.1
 [0.2.0]: https://github.com/istanek/spark-benchmark/releases/tag/v0.2.0
 [0.1.0]: https://github.com/istanek/spark-benchmark/releases/tag/v0.1.0
