@@ -1,12 +1,12 @@
 # spark-benchmark
 
-[![pipeline status](https://gitlab.com/istanek/spark-benchmark/badges/main/pipeline.svg)](https://gitlab.com/istanek/spark-benchmark/-/commits/main)
+[![CI](https://github.com/istanek/spark-benchmark/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/istanek/spark-benchmark/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue.svg)](https://www.python.org/)
 
 > The plain-language version of this document is `../README.txt`. This
-> markdown copy lives under `docs/` so the GitLab project landing page
-> renders the plain-text README instead.
+> markdown copy lives under `docs/` so the project landing page on
+> GitHub renders the plain-text README instead.
 
 Reproducible local LLM benchmark harness for evaluating model behavior on NVIDIA DGX Spark.
 

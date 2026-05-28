@@ -6,7 +6,7 @@
 #   2. Reads the matching `## [X.Y.Z] - YYYY-MM-DD` section out of CHANGELOG.md.
 #   3. Creates an annotated tag `vX.Y.Z` whose message is that section.
 #   4. Pushes the tag to origin.
-#   5. Creates a GitLab Release whose description is the same section.
+#   5. Creates a GitHub Release whose body is the same section.
 #
 # Usage:
 #   scripts/release.sh 0.2.0                 # cut v0.2.0
@@ -15,9 +15,10 @@
 #   scripts/release.sh 0.2.0 --branch foo    # allow cutting from a non-main branch
 #
 # Requirements:
-#   - jq, curl, git
-#   - GITLAB_TOKEN env var, or a token stored in ~/.git-credentials for gitlab.com
-#     (the token must have the `api` scope to create a Release).
+#   - jq, curl, git, python3
+#   - GITHUB_TOKEN env var, or `gh auth token` working, or a token stored in
+#     ~/.git-credentials for github.com. The token must have the `repo` scope
+#     (or, on a fine-grained PAT, `Contents: read & write`) to create a Release.
 
 set -euo pipefail
 
@@ -31,7 +32,7 @@ ALLOWED_BRANCH="main"
 VERSION_ARG=""
 
 usage() {
-  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -53,7 +54,6 @@ if [[ -z "$VERSION_ARG" ]]; then
   usage 2
 fi
 
-# Normalise: strip optional leading 'v'.
 VERSION="${VERSION_ARG#v}"
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "error: version must be semver MAJOR.MINOR.PATCH (got '$VERSION_ARG')" >&2
@@ -83,18 +83,15 @@ for tool in jq curl git python3; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing required tool: $tool"
 done
 
-# Working tree clean?
 if ! git diff --quiet || ! git diff --cached --quiet; then
   fail "working tree is not clean — commit or stash changes first"
 fi
 
-# On the expected branch?
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$CURRENT_BRANCH" != "$ALLOWED_BRANCH" ]]; then
   fail "expected branch '$ALLOWED_BRANCH' but on '$CURRENT_BRANCH' (use --branch to override)"
 fi
 
-# Tag must not already exist locally or on the remote.
 if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
   fail "tag ${TAG} already exists locally"
 fi
@@ -102,39 +99,51 @@ if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; t
   fail "tag ${TAG} already exists on origin"
 fi
 
-# Origin must point at a gitlab.com project.
+# Origin must point at a github.com project.
 ORIGIN_URL="$(git remote get-url origin 2>/dev/null || true)"
 if [[ -z "$ORIGIN_URL" ]]; then
   fail "no 'origin' remote configured"
 fi
 PROJECT_PATH="$(printf '%s' "$ORIGIN_URL" \
   | sed -E 's#^https?://[^/]+/##; s#^git@[^:]+:##; s#\.git$##')"
-if [[ -z "$PROJECT_PATH" ]] || [[ "$ORIGIN_URL" != *"gitlab.com"* ]]; then
-  fail "origin does not look like a gitlab.com URL: $ORIGIN_URL"
+if [[ -z "$PROJECT_PATH" ]] || [[ "$ORIGIN_URL" != *"github.com"* ]]; then
+  fail "origin does not look like a github.com URL: $ORIGIN_URL"
 fi
-PROJECT_ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$PROJECT_PATH")"
+OWNER="${PROJECT_PATH%%/*}"
+REPO="${PROJECT_PATH#*/}"
+if [[ -z "$OWNER" ]] || [[ -z "$REPO" ]] || [[ "$OWNER" == "$PROJECT_PATH" ]]; then
+  fail "could not parse owner/repo from origin URL: $ORIGIN_URL"
+fi
 
 log "repo:    $PROJECT_PATH"
 log "tag:     $TAG"
 log "branch:  $CURRENT_BRANCH"
 [[ "$DRY_RUN" -eq 1 ]] && warn "DRY RUN — nothing will be changed"
 
-# --- pull GitLab token -------------------------------------------------------
+# --- pull GitHub token -------------------------------------------------------
 
 resolve_token() {
-  if [[ -n "${GITLAB_TOKEN:-}" ]]; then
-    printf '%s' "$GITLAB_TOKEN"
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    printf '%s' "$GITHUB_TOKEN"
     return 0
   fi
+  if command -v gh >/dev/null 2>&1; then
+    local gh_tok
+    gh_tok="$(gh auth token 2>/dev/null || true)"
+    if [[ -n "$gh_tok" ]]; then
+      printf '%s' "$gh_tok"
+      return 0
+    fi
+  fi
   if [[ -r "${HOME}/.git-credentials" ]]; then
-    # https://oauth2:TOKEN@gitlab.com  -or-  https://USER:TOKEN@gitlab.com
-    awk -F '[/:@]' '/gitlab\.com/ {print $7; exit}' "${HOME}/.git-credentials" 2>/dev/null \
+    # https://oauth2:TOKEN@github.com  -or-  https://USER:TOKEN@github.com
+    awk -F '[/:@]' '/github\.com/ {print $7; exit}' "${HOME}/.git-credentials" 2>/dev/null \
       || true
   fi
 }
 TOKEN="$(resolve_token || true)"
 if [[ -z "$TOKEN" ]]; then
-  fail "no GitLab token found — set GITLAB_TOKEN or store creds in ~/.git-credentials"
+  fail "no GitHub token found — set GITHUB_TOKEN, run \`gh auth login\`, or store creds in ~/.git-credentials"
 fi
 
 # --- extract CHANGELOG section ----------------------------------------------
@@ -143,7 +152,6 @@ if [[ ! -f "$CHANGELOG" ]]; then
   fail "CHANGELOG.md not found at $CHANGELOG"
 fi
 
-# Pull the section starting at "## [VERSION] - DATE" up to the next "## [".
 SECTION_BODY="$(awk -v ver="$VERSION" '
   $0 ~ "^## \\[" ver "\\]" { capture=1; next }
   capture && /^## \[/      { exit }
@@ -154,7 +162,6 @@ if [[ -z "$(printf '%s' "$SECTION_BODY" | tr -d '[:space:]')" ]]; then
   fail "no CHANGELOG section found for version $VERSION (expected '## [$VERSION] - YYYY-MM-DD')"
 fi
 
-# Trim leading/trailing blank lines.
 SECTION_BODY="$(printf '%s\n' "$SECTION_BODY" | awk 'NF{found=1} found' | awk 'BEGIN{r=""} {r=r $0 "\n"} END{sub(/[[:space:]]+$/,"",r); print r}')"
 
 RELEASE_TITLE="${TAG} — spark-benchmark"
@@ -174,20 +181,22 @@ fi
 log "pushing tag to origin"
 run git push origin "$TAG"
 
-# --- GitLab Release ----------------------------------------------------------
+# --- GitHub Release ----------------------------------------------------------
 
-log "creating GitLab Release"
+log "creating GitHub Release"
 
 PAYLOAD="$(jq -n \
   --arg tag_name "$TAG" \
   --arg name     "$RELEASE_TITLE" \
-  --arg description "$SECTION_BODY" \
-  '{tag_name:$tag_name, name:$name, description:$description}')"
+  --arg body     "$SECTION_BODY" \
+  '{tag_name:$tag_name, name:$name, body:$body, draft:false, prerelease:false}')"
+
+RELEASE_URL_API="https://api.github.com/repos/${OWNER}/${REPO}/releases"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  printf '\033[2m   dry-run:\033[0m POST https://gitlab.com/api/v4/projects/%s/releases\n' "$PROJECT_ENC"
+  printf '\033[2m   dry-run:\033[0m POST %s\n' "$RELEASE_URL_API"
   printf '\033[2m   payload preview:\033[0m\n'
-  printf '%s\n' "$PAYLOAD" | jq '{tag_name, name, description: (.description | .[0:240] + "...")}'
+  printf '%s\n' "$PAYLOAD" | jq '{tag_name, name, draft, prerelease, body: (.body | .[0:240] + "...")}'
   log "dry-run complete"
   exit 0
 fi
@@ -196,16 +205,18 @@ HTTP_RESP="$(mktemp)"
 trap 'rm -f "$HTTP_RESP"' EXIT
 HTTP_CODE="$(curl -sS -o "$HTTP_RESP" -w '%{http_code}' \
   -X POST \
-  --header "PRIVATE-TOKEN: $TOKEN" \
+  --header "Authorization: Bearer $TOKEN" \
+  --header "Accept: application/vnd.github+json" \
+  --header "X-GitHub-Api-Version: 2022-11-28" \
   --header 'Content-Type: application/json' \
   --data  "$PAYLOAD" \
-  "https://gitlab.com/api/v4/projects/${PROJECT_ENC}/releases")"
+  "$RELEASE_URL_API")"
 
 if [[ "$HTTP_CODE" != "201" ]]; then
-  warn "GitLab API returned HTTP $HTTP_CODE"
+  warn "GitHub API returned HTTP $HTTP_CODE"
   cat "$HTTP_RESP" >&2
-  fail "release creation failed — tag is already pushed; create the Release manually at https://gitlab.com/${PROJECT_PATH}/-/releases or rerun after fixing the cause"
+  fail "release creation failed — tag is already pushed; create the Release manually at https://github.com/${OWNER}/${REPO}/releases/new?tag=${TAG} or rerun after fixing the cause"
 fi
 
-RELEASE_URL="$(jq -r '._links.self // empty' "$HTTP_RESP")"
-log "release published: ${RELEASE_URL:-https://gitlab.com/${PROJECT_PATH}/-/releases/${TAG}}"
+RELEASE_HTML_URL="$(jq -r '.html_url // empty' "$HTTP_RESP")"
+log "release published: ${RELEASE_HTML_URL:-https://github.com/${OWNER}/${REPO}/releases/tag/${TAG}}"

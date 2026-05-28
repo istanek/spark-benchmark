@@ -7,15 +7,15 @@ keep it small as it grows.
 
 - Branch off `main`. Use feature branches like `feat/<short-name>` or
   `fix/<short-name>`. Don't push directly to `main` — it is protected.
-- Open a Merge Request from your branch. Keep MRs small and focused.
+- Open a Pull Request from your branch. Keep PRs small and focused.
 - Use **conventional commit** prefixes in titles and commit messages:
   `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`, `ci:`.
-- Reference GitLab issues with `#<issue-number>` when relevant.
+- Reference GitHub issues with `#<issue-number>` when relevant.
 
 ## Local development
 
 ```bash
-git clone https://gitlab.com/istanek/spark-benchmark.git
+git clone https://github.com/istanek/spark-benchmark.git
 cd spark-benchmark
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
@@ -97,21 +97,24 @@ Releases are cut from `main` by the maintainer. The process:
    ```
 3. Run the release script. It validates the working tree, extracts the
    matching CHANGELOG section, creates an annotated tag, pushes it, and
-   creates a GitLab Release with the same body:
+   creates a GitHub Release with the same body:
    ```bash
    scripts/release.sh 0.2.0              # cut v0.2.0
    scripts/release.sh 0.2.0 --dry-run    # preview without changing anything
    ```
 
-Requirements: `jq`, `curl`, `python3`, and a GitLab token. The script
-reads the token from `GITLAB_TOKEN` first, then falls back to
-`~/.git-credentials`. The token must have the `api` scope (not just
-`write_repository`) to create a Release.
+Requirements: `jq`, `curl`, `python3`, and a GitHub token. The script
+reads the token from `GITHUB_TOKEN` first, then falls back to
+`gh auth token` (if the GitHub CLI is installed and signed in), and
+finally to a token stored in `~/.git-credentials` for `github.com`.
+The token must have the `repo` scope (or, on a fine-grained PAT,
+`Contents: read & write`) to create a Release.
 
 ## Tests + CI
 
 - The CI runs YAML / JSON fixture validation and `pytest tests/` on every
-  push and MR (see `.gitlab-ci.yml`).
+  push and pull request to `main`
+  (see `.github/workflows/ci.yml`).
 - Keep tests deterministic. No reliance on Ollama, NVML, or the network
   inside `tests/` — those code paths are exercised manually via the CLI.
 

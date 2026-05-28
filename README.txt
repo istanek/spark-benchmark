@@ -57,7 +57,7 @@ model in turn, runs every test, and gives you a side-by-side table.
   Install
 --------------------------------------------------------------------------------
 
-  git clone https://gitlab.com/istanek/spark-benchmark.git
+  git clone https://github.com/istanek/spark-benchmark.git
   cd spark-benchmark
   pip install -e .
 
@@ -343,9 +343,9 @@ machine.
   Help, support, bugs
 --------------------------------------------------------------------------------
 
-Open an issue on GitLab:
-    https://gitlab.com/istanek/spark-benchmark/-/issues
+Open an issue on GitHub:
+    https://github.com/istanek/spark-benchmark/issues
 
-Or send a merge request — see CONTRIBUTING.md for the workflow.
+Or send a pull request — see CONTRIBUTING.md for the workflow.
 
 License: MIT. See the LICENSE file.

@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Project home moved from GitLab to GitHub
+  (`https://github.com/istanek/spark-benchmark`).** All Git history
+  and both release tags (`v0.1.0`, `v0.2.0`) carry over unchanged
+  (identical commit hashes). Knock-on edits in this commit:
+  - ``CHANGELOG.md`` compare/tag link references repointed from
+    ``gitlab.com/.../-/compare`` and ``-/tags`` to
+    ``github.com/.../compare`` and ``releases/tag``.
+  - ``docs/README.md`` swaps the GitLab pipeline badge for a GitHub
+    Actions CI badge and rewords the "landing page" note.
+  - ``README.txt`` "Help, support, bugs" now points at GitHub Issues
+    and a pull request workflow; the install snippet uses the new
+    GitHub URL.
+  - ``CONTRIBUTING.md`` switches "Merge Request" / "MR" / "GitLab
+    issues" wording to "Pull Request" / "PR" / "GitHub Issues" and
+    points the cloning snippet at GitHub.
+  - ``.gitlab-ci.yml`` was removed and replaced with
+    ``.github/workflows/ci.yml`` running the same two stages
+    (YAML/JSON fixture lint + ``pytest tests/``) on every push and
+    pull request to ``main``.
+  - ``scripts/release.sh`` was rewritten against the GitHub Release
+    API (``POST /repos/<owner>/<repo>/releases``,
+    ``Authorization: Bearer …``, ``Accept: application/vnd.github+json``).
+    It now reads ``GITHUB_TOKEN`` first, then falls back to
+    ``gh auth token`` and finally to ``~/.git-credentials`` for
+    ``github.com``. The CHANGELOG-extraction logic and tag/push
+    flow are unchanged.
+
 ### Added
 
 - **Custom (BYOT) menu item in the curses TUI (`spark-bench shell`).**
@@ -183,6 +212,6 @@ Initial public release of the spark-benchmark scaffold.
   `docs/extensions-spec.md` but not yet implemented.
 - TRT-LLM and vLLM backends fall through to the stub adapter.
 
-[Unreleased]: https://gitlab.com/istanek/spark-benchmark/-/compare/v0.2.0...HEAD
-[0.2.0]: https://gitlab.com/istanek/spark-benchmark/-/tags/v0.2.0
-[0.1.0]: https://gitlab.com/istanek/spark-benchmark/-/tags/v0.1.0
+[Unreleased]: https://github.com/istanek/spark-benchmark/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/istanek/spark-benchmark/releases/tag/v0.2.0
+[0.1.0]: https://github.com/istanek/spark-benchmark/releases/tag/v0.1.0
