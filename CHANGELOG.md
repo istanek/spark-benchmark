@@ -198,6 +198,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bundle as ``"both"`` (``report.md`` *and* ``report.html``) by
   default. ``aggregate`` likewise writes both.
 
+### Fixed
+
+- **Sustained-throughput dual bars overflowed their panel.** The
+  "Initial vs sustained throughput" SVGs in
+  ``_svg_dual_bars`` sat one level deeper inside an extra flex
+  wrapper, so the ``.bar-row svg { flex: 1 1 auto }`` rule didn't
+  reach them. With no explicit ``width``, browsers fell back to
+  the inline-SVG default (300 px) and the bars spilled into the
+  neighbouring "Throttle ratio" card. The track wrapper now uses
+  ``flex: 1 1 0; min-width: 0; overflow: hidden`` and the inner
+  SVGs carry ``width: 100%; display: block``. Added matching
+  CSS safety nets — ``.bar-row svg`` now also sets
+  ``min-width: 0``, ``.dual-bars-track svg`` enforces full-width,
+  and a global ``svg.lines { width: 100%; height: auto }`` rule
+  keeps the throughput line chart honest in narrow containers.
+
 ## [0.2.1] - 2026-05-28
 
 Polish release on top of 0.2.0. Surfaces the BYOT subsystem in the

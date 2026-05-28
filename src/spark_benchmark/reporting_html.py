@@ -335,7 +335,10 @@ details[open] > summary::before { transform: rotate(90deg); color: var(--accent)
   font-variant-numeric: tabular-nums; font-size: 13px;
   color: var(--fg-muted); font-weight: 600;
 }
-.bar-row svg { flex: 1 1 auto; height: 14px; display: block; }
+.bar-row svg { flex: 1 1 auto; min-width: 0; height: 14px; display: block; }
+.bar-row .dual-bars-track { min-width: 0; }
+.bar-row .dual-bars-track svg { width: 100%; height: auto; display: block; }
+svg.lines { width: 100%; height: auto; display: block; }
 
 /* ------------ Per-suite 3-up dashboard grid ------------ */
 .suite-grid {
@@ -757,13 +760,16 @@ def _svg_dual_bars(
         ra = va / cap
         rb = vb / cap
         parts.append(
-            f'<div class="bar-row" style="align-items:flex-start;">'
+            f'<div class="bar-row dual-bars" style="align-items:flex-start;">'
             f'<span class="label" title="{_esc(name)}">{_esc(name)}</span>'
-            f'<div style="flex:1 1 auto;display:flex;flex-direction:column;gap:2px;">'
-            f'<svg viewBox="0 0 100 1" preserveAspectRatio="none" style="height:7px;">'
+            f'<div class="dual-bars-track" style="flex:1 1 0;min-width:0;display:flex;'
+            f'flex-direction:column;gap:2px;overflow:hidden;">'
+            f'<svg viewBox="0 0 100 1" preserveAspectRatio="none" '
+            f'style="width:100%;height:7px;display:block;">'
             f'<rect x="0" y="0" width="100" height="1" fill="#e2e8f0"/>'
             f'<rect x="0" y="0" width="{ra * 100:.2f}" height="1" fill="{accent_a}"/></svg>'
-            f'<svg viewBox="0 0 100 1" preserveAspectRatio="none" style="height:7px;">'
+            f'<svg viewBox="0 0 100 1" preserveAspectRatio="none" '
+            f'style="width:100%;height:7px;display:block;">'
             f'<rect x="0" y="0" width="100" height="1" fill="#e2e8f0"/>'
             f'<rect x="0" y="0" width="{rb * 100:.2f}" height="1" fill="{accent_b}"/></svg>'
             f"</div>"
