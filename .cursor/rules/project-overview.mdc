@@ -56,22 +56,50 @@ Custom (BYOT) and `quick` runs additionally write `summary.html` next to
 
 ## HTML reporting (`reporting_html.py`)
 
+Single-file standalone HTML — no JS, no CDN, no external assets.
+Hero banner with radial-gradient background, stat-tile strip,
+verdict card, color-coded pass-rate cells (`good`/`warn`/`bad`
+bands), per-suite dashboard cards with suite-specific charts.
+`@media print` stylesheet so the report prints cleanly.
+
 - `render_canonical_report_html(aggregate, request=None,
-  selected_models=None, selected_suites=None)` produces the
-  bundle-level rollup: header / meta, verdict + recommendation card,
-  overall ranking table with bar chart, per-suite tables with
-  pass-rate bar charts, and a "recent runs" tail.
-- `render_custom_summary_html(summary)` produces the BYOT / quick
-  rollup: per-model telemetry table, mean-decode-tps bar chart, one
-  collapsible `<details>` block per task with each model's reply
-  side-by-side. Errored cells highlighted.
-- All renderers HTML-escape user content (prompts, model output,
-  error messages). No JS, no CDN, no external assets — self-contained
-  so the file works offline / over email / from a USB stick.
+  selected_models=None, selected_suites=None)` — bundle-level
+  rollup: hero + winner card, stat tiles, verdict, overall ranking
+  with color-coded pass-rate cells, per-suite dashboards, recent
+  runs tail.
+- `render_custom_summary_html(summary)` — BYOT / quick rollup:
+  cyan-tinted hero (visually distinct from canonical), stat tiles
+  (completed / errored / fastest / lowest TTFT), per-model
+  telemetry card with 2-up bar charts, per-task `<details>`
+  blocks each opening with a 2-up TTFT/output-length mini-chart row.
+- **Suite-specific dashboards** (one renderer per canonical suite):
+  `_render_suite_openclaw_speed`,
+  `_render_suite_reliability` (grounding + structured),
+  `_render_suite_code_generation`,
+  `_render_suite_sustained_throughput`. Sustained renders
+  init-vs-sustained dual bars + throttle-ratio gauges + peak-temp
+  thermometers + a wide tps-over-time line chart with optional
+  GPU-temp overlay loaded from `telemetry-<model>.jsonl`. Unknown
+  suite names fall through to `_render_suite_generic`.
+- **SVG helpers** (all `viewBox`-based, all inline):
+  `_svg_bars` (with `invert_color` for lower-is-better metrics),
+  `_svg_line_chart` (with optional secondary axis),
+  `_svg_gauge` (180° semicircle, optional invert),
+  `_svg_dual_bars`, `_svg_stacked_bars`, `_svg_thermometer`,
+  `_pass_fail_strip_html`.
+- **Lazy loaders**: `_load_results_rows(run_dir)` for per-task
+  pass-fail and sandbox-status breakdowns;
+  `_load_telemetry_samples(run_dir, model, max_points=240)` for
+  GPU temp / power overlays (uniformly downsamples).
+- `reporting.aggregate_runs` forwards `windows` (sustained per-window
+  throughput series), `benchmarks` (code-generation per-benchmark
+  breakdown), and `run_dir` per model so the HTML renderer has
+  everything it needs without re-walking the filesystem.
 - `reporting.write_report(path, format, aggregate)` accepts
   `"markdown"`, `"html"`, or `"both"`. The benchmark / wizard /
   shell-run / aggregate flows pass `"both"` so every bundle ships
-  `report.md` and `report.html` next to each other.
+  `report.md` and `report.html` next to each other. Custom / quick
+  runs likewise emit `summary.md` + `summary.html`.
 
 ## Custom (BYOT) suites
 

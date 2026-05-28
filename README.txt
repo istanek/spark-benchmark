@@ -329,9 +329,18 @@ The whole run also gets two top-level reports with the overall ranking:
                     into GitHub
     report.html     standalone HTML — open it in any browser, share by
                     email, attach to a PR. Single file. No JavaScript,
-                    no internet connection required. Includes the
-                    overall ranking, per-suite tables with little bar
-                    charts, the verdict, and a recommendation.
+                    no internet connection required. Includes:
+                      - a hero banner with the recommended model + why,
+                      - stat tiles (models tested, suites run, total
+                        tasks, overall pass rate),
+                      - the overall ranking with color-coded cells
+                        (green / amber / red based on pass rate),
+                      - per-suite dashboard cards with charts tailored
+                        to each test (bar charts, line charts, gauges,
+                        thermometers, per-task pass/fail strips),
+                      - the verdict and recommendation.
+                    Prints to PDF cleanly (gradients flatten, layout
+                    survives).
 
 Custom (Bring-Your-Own-Test) and Quick runs (Way 4 and Way 5) write
 to a separate tree so they cannot be confused with the canonical

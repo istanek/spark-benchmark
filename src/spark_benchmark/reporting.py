@@ -146,7 +146,27 @@ def aggregate_runs(runs_root: Path) -> dict[str, Any]:
                 "energy_j_per_token",
                 "throttle_reasons_observed",
                 "telemetry_source",
+                # Per-window throughput series (sustained_throughput) — used
+                # by the HTML renderer to draw a tps-over-time line chart.
+                # Discarded by the markdown / CLI summaries since they only
+                # surface scalar KPIs.
+                "windows",
+                # Per-benchmark breakdown (code_generation) — list of
+                # {benchmark, tasks, pass_at_1, pass_at_k, failed_task_ids}.
+                # The HTML renderer turns this into a stacked-bar chart;
+                # the markdown report prints the pass_at_1 directly via
+                # the row's existing benchmarks field.
+                "benchmarks",
+                # Per-model run directory inside this suite's run bundle.
+                # The HTML renderer uses it to lazy-load telemetry-*.jsonl
+                # and re-read results.jsonl when it needs per-task data
+                # (pass/fail strips, sandbox-failure breakdown). Optional
+                # — falls back gracefully when the file is absent.
+                "run_dir",
             ):
+                if key == "run_dir":
+                    model_bucket["extra"]["run_dir"] = str(run_dir)
+                    continue
                 if model.get(key) is not None:
                     model_bucket["extra"][key] = model[key]
             row_metrics = metrics_by_model.get(model["model"])

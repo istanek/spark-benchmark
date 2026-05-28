@@ -100,10 +100,17 @@ PYTHONPATH=src python3 -m spark_benchmark.cli wizard \
 `↑`/`↓` move, `Space` toggles a model or suite, `Enter` confirms. After
 two screens (models, then suites) the harness runs the matching bundle
 end-to-end and prints a CLI summary plus the paths to `report.md` and
-`report.html` (a single-file standalone HTML report — no JS, no CDN —
-with the overall ranking, per-suite tables, inline SVG bar charts, and
-the verdict / recommendation). With `--allow-auto-detected` the picker
-shows every non-vision Ollama tag, flagged as `auto-detected`.
+`report.html`. The HTML report is a single-file standalone page (no JS,
+no CDN, no external assets) with a gradient hero banner, stat tiles
+(models / suites / tasks / overall pass rate), color-coded ranking
+cells, and per-suite dashboard cards — each suite gets charts tailored
+to it: pass-rate bars and TTFT (lower-is-better, inverted colour) for
+the speed probe, per-task pass/fail strips for the reliability suites,
+per-benchmark stacked bars for code generation, and dual-bars +
+throttle-ratio gauges + peak-temp thermometers + a tps-over-time line
+chart (with optional GPU-temp overlay) for sustained throughput. With
+`--allow-auto-detected` the picker shows every non-vision Ollama tag,
+flagged as `auto-detected`.
 
 ### `spark-bench console` — single-model REPL
 

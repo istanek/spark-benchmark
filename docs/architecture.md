@@ -387,26 +387,64 @@ write `results.jsonl` row-by-row; finish with `summary.json` (+ optionally
     `report.md` *and* `report.html` next to each other.
 - **`reporting_html.py`** — single-file standalone HTML rendering
   for both flavours of run output. No JavaScript, no CDN, no
-  external assets — embedded CSS + inline SVG bar charts only.
+  external assets — embedded CSS, inline SVG charts, native
+  `<details>`/`<summary>` for collapsibles. Hero banner uses a
+  radial-gradient background; all charts are
+  `viewBox`-based so they scale with the container.
   - `render_canonical_report_html(aggregate, request=None,
     selected_models=None, selected_suites=None)` produces the
-    bundle-level HTML rollup: header / meta, verdict +
-    recommendation card, overall ranking table with bar chart,
-    per-suite tables with pass-rate bar charts and narrative
-    commentary, and a "recent runs" tail. Re-uses the canonical
+    bundle-level rollup: gradient hero with display H1 + winner
+    card, stat-tile strip (models / suites / tasks / overall
+    pass rate / top score), verdict card with gradient
+    background, overall ranking table with **color-coded
+    pass-rate cells** (`good`/`warn`/`bad` bands via CSS
+    `--cell-pct` custom property) + overall-score bar chart,
+    per-suite **dashboard cards** with suite-specific charts
+    (see below), and a "recent runs" tail. Re-uses the canonical
     narrative helpers (`_overall_rank_rows`, `_suite_commentary`,
-    `_verdict_paragraph`) from `reporting.py` so the HTML and CLI
-    summaries stay in sync.
-  - `render_custom_summary_html(summary)` produces the BYOT
-    rollup: header card with suite name / version / mode /
-    backend / task count, per-model telemetry table with mean
-    decode-tps bar chart, and one collapsible `<details>` block
-    per task with each model's reply side-by-side. Errored cells
-    are highlighted.
+    `_verdict_paragraph`) from `reporting.py` so the HTML and
+    CLI summaries stay in sync.
+  - `render_custom_summary_html(summary)` produces the BYOT /
+    quick rollup: cyan-tinted hero (visually distinct from
+    canonical), stat tiles (completed / errored / fastest decode
+    / lowest TTFT), per-model telemetry card with 2-up bar
+    charts (mean tps, mean TTFT inverted), and one collapsible
+    `<details>` block per task. Each task block opens with a
+    2-up mini-chart row (TTFT comparison + output length per
+    model) and a per-model error-strip of dots in the summary
+    header. Errored cells are highlighted in red.
+  - **Suite-specific dashboards** (one per canonical suite):
+    `openclaw_speed` (pass / TTFT inverted / tok/s),
+    `hallucination_grounding` and `practical_structured_output`
+    (pass / TTFT inverted / per-task pass-fail strip lazy-loaded
+    from `results.jsonl`), `code_generation` (aggregate pass@1 /
+    per-benchmark stacked bars / sandbox-status breakdown
+    lazy-loaded from `results.jsonl`), `sustained_throughput`
+    (initial-vs-sustained dual bars / throttle-ratio
+    semicircle gauges / peak-temp thermometers / wide
+    tps-over-time line chart with optional GPU-temp overlay
+    lazy-loaded from `telemetry-<model>.jsonl`). Unknown suites
+    fall back to a single pass-rate bar chart.
+  - **SVG primitives**: `_svg_bars` (with optional inverted
+    colour for "lower is better" metrics), `_svg_line_chart`
+    (multi-series + optional secondary axis), `_svg_gauge`
+    (180° semicircle, colour-graded, optional invert),
+    `_svg_dual_bars`, `_svg_stacked_bars`, `_svg_thermometer`,
+    `_pass_fail_strip_html`. All emit pure inline SVG with no
+    JavaScript dependency.
+  - **Lazy loaders**: `_load_results_rows(run_dir)` reads
+    `results.jsonl` (best-effort, skips malformed lines),
+    `_load_telemetry_samples(run_dir, model, max_points=240)`
+    reads `telemetry-<model>.jsonl` and uniformly downsamples
+    so a multi-thousand-point soak compresses to a few KB of
+    polylines.
   - All user-supplied content (prompts, model output, error
     messages) is HTML-escaped via `html.escape(quote=True)` so
     YAML suites containing `<script>` or `<img onerror=...>`
     payloads can't escape their `<pre>` containers.
+  - **Print stylesheet** (`@media print`) flattens gradients
+    and removes shadows so the report prints cleanly to PDF
+    without losing the table layout.
 
 ### Telemetry
 

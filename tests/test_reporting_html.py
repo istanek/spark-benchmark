@@ -4,25 +4,46 @@ Coverage focus:
 
 * document well-formedness (doctype, single ``<html>`` / ``<body>``,
   embedded CSS, no script tags)
-* canonical (bundle) renderer surfaces overall ranking + per-suite
-  blocks + verdict when the aggregate has data
-* custom (BYOT) renderer surfaces telemetry table + side-by-side
-  per-task blocks and HTML-escapes user content (XSS hygiene)
-* SVG bar-chart helper handles empty input, picks the correct value
-  format, clamps negatives, and emits the right number of bars
+* hero / stat-tile chrome on both canonical and custom reports
+* canonical (bundle) renderer surfaces overall ranking + verdict +
+  per-suite dashboard cards (one suite-specific renderer for each of
+  ``openclaw_speed`` / ``hallucination_grounding`` /
+  ``practical_structured_output`` / ``code_generation`` /
+  ``sustained_throughput``)
+* custom (BYOT) renderer surfaces telemetry card + per-task TTFT and
+  output-length charts + side-by-side blocks + errored strip; HTML-
+  escapes user content (XSS hygiene)
+* new SVG helpers: line chart (with optional secondary axis), gauge,
+  dual bars, stacked bars, thermometer, pass-fail strip
+* lazy loaders read ``results.jsonl`` and ``telemetry-*.jsonl`` from
+  a suite run-dir and degrade gracefully when files are missing
 * ``write_report(..., "both")`` emits both ``.md`` and ``.html`` next
   to each other so callers don't have to invoke the renderers twice
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from spark_benchmark.reporting import write_report
 from spark_benchmark.reporting_html import (
+    _band_for_pass_rate,
+    _cell_pct_html,
+    _code_gen_status_breakdown,
+    _gradient_color_for_ratio,
+    _load_results_rows,
+    _load_telemetry_samples,
+    _pass_fail_strip_html,
+    _per_task_pass_fail,
     _svg_bars,
+    _svg_dual_bars,
+    _svg_gauge,
+    _svg_line_chart,
+    _svg_stacked_bars,
+    _svg_thermometer,
     render_canonical_report_html,
     render_custom_summary_html,
 )
@@ -190,9 +211,16 @@ def test_canonical_report_includes_overall_ranking_and_verdict() -> None:
     assert "Overall ranking" in html
     assert "llama3.1-8b" in html
     assert "Verdict" in html
-    # Per-suite block headers
-    assert "Suite: <code>openclaw_speed</code>" in html
-    assert "Suite: <code>hallucination_grounding</code>" in html
+    # Hero / stat-tile chrome
+    assert 'class="hero"' in html
+    assert 'class="stat-tiles"' in html
+    assert "Recommended pick" in html  # winner card
+    # Per-suite block headers — new design uses human-readable titles
+    # plus a canonical-name badge inside an <h2>.
+    assert "Speed probe" in html
+    assert 'class="badge accent">openclaw_speed' in html
+    assert "Grounding / hallucination" in html
+    assert 'class="badge accent">hallucination_grounding' in html
     assert "Recent runs" in html
 
 
@@ -308,6 +336,419 @@ def test_write_report_both_emits_md_and_html_next_to_each_other() -> None:
         html_text = out_html.read_text(encoding="utf-8")
         assert html_text.startswith("<!doctype html>")
         assert "llama3.1-8b" in html_text
+
+
+# --------------------------------------------------------------------- #
+# New SVG helpers (line, gauge, dual bars, stacked, thermometer, strip)
+# --------------------------------------------------------------------- #
+
+
+def test_svg_line_chart_empty_input_returns_empty_string() -> None:
+    assert _svg_line_chart([]) == ""
+    assert _svg_line_chart([("empty", [])]) == ""
+
+
+def test_svg_line_chart_renders_polyline_with_legend() -> None:
+    series = [("model-a", [(0.0, 10.0), (60.0, 12.0), (120.0, 11.5)])]
+    html = _svg_line_chart(series, height=80)
+    assert "<polyline" in html
+    assert "model-a" in html  # legend label
+    assert 'class="lines"' in html
+    # Three points → coords list contains three space-separated pairs.
+    points_attr = re.search(r'points="([^"]+)"', html)
+    assert points_attr is not None
+    assert len(points_attr.group(1).split(" ")) == 3
+
+
+def test_svg_line_chart_overlays_dashed_secondary_axis() -> None:
+    series = [("tps", [(0.0, 30.0), (60.0, 28.0)])]
+    secondary = [("temp", [(0.0, 60.0), (60.0, 78.0)])]
+    html = _svg_line_chart(series, secondary=secondary)
+    # Primary line is solid; secondary uses stroke-dasharray.
+    assert html.count("<polyline") == 2
+    assert "stroke-dasharray" in html
+    assert "(2nd axis)" in html
+
+
+def test_svg_gauge_renders_arc_at_correct_fill_and_color() -> None:
+    html = _svg_gauge(0.9, max_value=1.0, label="ratio", suffix="%")
+    assert html.startswith("<svg")
+    assert "ratio" in html
+    assert "</svg>" in html
+    # 0.9 of max → almost-full sweep, value displayed as "90%".
+    assert ">90%<" in html
+    # Two paths: the grey track and the colour-graded fill arc.
+    assert html.count("<path") == 2
+
+
+def test_svg_gauge_invert_flips_color_mapping() -> None:
+    # ratio=0.1 (low) with invert=True should land on the *good* end of
+    # the gradient (≈ green), since "low value" means "low throttle".
+    high_ratio = _svg_gauge(0.9, max_value=1.0, invert=False)
+    low_inverted = _svg_gauge(0.1, max_value=1.0, invert=True)
+    assert "stroke=" in high_ratio and "stroke=" in low_inverted
+    # We don't compare exact hex; we just confirm that flipping invert
+    # changes the colour outcome.
+    high_color = re.findall(r'stroke="(#[0-9a-f]{6})"', high_ratio)[1]
+    low_color = re.findall(r'stroke="(#[0-9a-f]{6})"', low_inverted)[1]
+    assert high_color == low_color  # same green at the end of the ramp
+
+
+def test_svg_dual_bars_renders_paired_thin_bars_per_row() -> None:
+    html = _svg_dual_bars(
+        [("a", 42.0, 38.0), ("b", 35.0, 22.0)],
+        label_a="Initial",
+        label_b="Sustained",
+    )
+    # Two rows × 2 SVGs each = 4 SVGs; plus the legend has none.
+    assert html.count("<svg") == 4
+    assert "Initial" in html
+    assert "Sustained" in html
+    assert ">a<" in html
+    assert ">b<" in html
+
+
+def test_svg_dual_bars_empty_returns_empty_string() -> None:
+    assert _svg_dual_bars([]) == ""
+
+
+def test_svg_stacked_bars_segments_normalize_to_row_total() -> None:
+    rows = [
+        ("model-a", [("passed", 7.0), ("failed", 3.0)]),
+        ("model-b", [("passed", 5.0), ("failed", 5.0)]),
+    ]
+    html = _svg_stacked_bars(rows)
+    # Two rows × 1 SVG each = 2 SVGs (plus segments inside).
+    assert html.count('class="bar-row"') == 2
+    # First model: passed segment is 7/10 = 70% wide. Second model: 50%.
+    # Just check both width values appear somewhere.
+    assert 'width="70.00"' in html
+    assert 'width="50.00"' in html
+    # Legend includes both segment labels.
+    assert "passed" in html
+    assert "failed" in html
+
+
+def test_svg_stacked_bars_skips_empty_rows() -> None:
+    rows = [("with-data", [("ok", 1.0)]), ("empty", [])]
+    html = _svg_stacked_bars(rows)
+    # Only one rendered row (the empty one is filtered out).
+    assert html.count('class="bar-row"') == 1
+
+
+def test_svg_thermometer_returns_empty_for_none() -> None:
+    assert _svg_thermometer(None) == ""
+
+
+def test_svg_thermometer_renders_value_and_color() -> None:
+    html = _svg_thermometer(85.0, label="peak")
+    assert html.startswith("<svg")
+    assert ">85<" in html
+    assert "peak" in html
+    # Hot temperature renders three filled shapes (track rect, fill rect,
+    # and the round bulb circle). The renderer must produce all three.
+    assert html.count("<rect") == 2
+    assert "<circle" in html
+    # At least one element references a hex colour from the gradient ramp
+    # (red → amber → green). 85 °C lands near the hot end → reddish.
+    hex_colors = re.findall(r'fill="(#[0-9a-f]{6})"', html)
+    assert any(c.startswith("#") for c in hex_colors)
+
+
+def test_pass_fail_strip_renders_one_row_per_model() -> None:
+    html = _pass_fail_strip_html(
+        [("alpha", [True, True, False, None]), ("bravo", [False, False])]
+    )
+    assert html.count('class="pf-row"') == 2
+    # 4 + 2 = 6 cells total.
+    assert html.count('class="cell pass"') == 2  # alpha has 2 passes
+    assert html.count('class="cell fail"') == 3  # alpha 1, bravo 2
+    assert html.count('class="cell na"') == 1
+    assert ">alpha<" in html
+    assert ">bravo<" in html
+
+
+def test_pass_fail_strip_empty_returns_empty_string() -> None:
+    assert _pass_fail_strip_html([]) == ""
+
+
+def test_gradient_color_for_ratio_traverses_red_amber_green() -> None:
+    # 0.0 → red, 0.5 → amber, 1.0 → green. Just sanity-check the
+    # endpoints; the interpolation is the implementation detail.
+    assert _gradient_color_for_ratio(0.0).lower() == "#dc2626"
+    assert _gradient_color_for_ratio(1.0).lower() == "#16a34a"
+    assert _gradient_color_for_ratio(0.5).lower() == "#d97706"
+
+
+def test_band_for_pass_rate_buckets() -> None:
+    assert _band_for_pass_rate(None) == "na"
+    assert _band_for_pass_rate(0.99) == "good"
+    assert _band_for_pass_rate(0.95) == "good"
+    assert _band_for_pass_rate(0.94) == "warn"
+    assert _band_for_pass_rate(0.80) == "warn"
+    assert _band_for_pass_rate(0.79) == "bad"
+    assert _band_for_pass_rate(0.0) == "bad"
+
+
+def test_cell_pct_html_emits_color_band_and_fill_pct() -> None:
+    cell = _cell_pct_html(0.85)
+    assert 'data-band="warn"' in cell
+    assert "--cell-pct: 85.0%" in cell
+    assert "85.0%" in cell
+    # None renders the dimmed em-dash and 0% fill.
+    none_cell = _cell_pct_html(None)
+    assert 'data-band="na"' in none_cell
+    assert "—" in none_cell
+
+
+# --------------------------------------------------------------------- #
+# Lazy loaders                                                          #
+# --------------------------------------------------------------------- #
+
+
+def test_load_results_rows_returns_empty_list_when_missing() -> None:
+    with TemporaryDirectory() as tmp:
+        # No results.jsonl in tmp — should return empty without raising.
+        assert _load_results_rows(tmp) == []
+    # Also tolerates None.
+    assert _load_results_rows(None) == []
+
+
+def test_load_results_rows_skips_malformed_lines() -> None:
+    with TemporaryDirectory() as tmp:
+        path = Path(tmp) / "results.jsonl"
+        path.write_text(
+            '{"task_id": "t1", "model": "m", "evaluation": {"passed": true}}\n'
+            "this-is-not-json\n"
+            '{"task_id": "t2", "model": "m", "evaluation": {"passed": false}}\n',
+            encoding="utf-8",
+        )
+        rows = _load_results_rows(tmp)
+        assert len(rows) == 2
+        assert rows[0]["task_id"] == "t1"
+        assert rows[1]["task_id"] == "t2"
+
+
+def test_per_task_pass_fail_extracts_in_first_seen_order() -> None:
+    rows = [
+        {"task_id": "t1", "model": "m", "evaluation": {"passed": True}},
+        {"task_id": "t2", "model": "m", "evaluation": {"passed": False}},
+        {"task_id": "t3", "model": "m"},  # no evaluation
+        {"task_id": "t1", "model": "other"},  # different model — ignored
+    ]
+    pf = _per_task_pass_fail(rows, "m")
+    assert pf == [True, False, None]
+
+
+def test_load_telemetry_samples_downsamples_uniformly() -> None:
+    with TemporaryDirectory() as tmp:
+        path = Path(tmp) / "telemetry-foo.jsonl"
+        # Write 1000 samples with a clean ramp so we can check the
+        # downsampler picks evenly-spaced points.
+        with path.open("w", encoding="utf-8") as fh:
+            for i in range(1000):
+                fh.write(json.dumps({"timestamp_s": float(i), "gpu_temp_c": 50 + i * 0.01}) + "\n")
+        samples = _load_telemetry_samples(tmp, "foo", max_points=50)
+        assert len(samples) == 50
+        # First and last sample should be near the boundaries of the input.
+        assert samples[0]["timestamp_s"] == 0.0
+        assert samples[-1]["timestamp_s"] >= 970.0
+
+
+def test_load_telemetry_samples_returns_empty_when_missing() -> None:
+    with TemporaryDirectory() as tmp:
+        assert _load_telemetry_samples(tmp, "missing-model") == []
+
+
+def test_code_gen_status_breakdown_orders_passed_first() -> None:
+    rows = [
+        {
+            "model": "m",
+            "samples": [
+                {"sandbox": {"status": "passed"}},
+                {"sandbox": {"status": "timeout"}},
+                {"sandbox": {"status": "compile_error"}},
+                {"sandbox": {"status": "passed"}},
+            ],
+        }
+    ]
+    counts = _code_gen_status_breakdown(rows, "m")
+    assert counts[0][0] == "passed"
+    assert dict(counts) == {"passed": 2.0, "timeout": 1.0, "compile_error": 1.0}
+
+
+# --------------------------------------------------------------------- #
+# Suite-specific dashboards                                             #
+# --------------------------------------------------------------------- #
+
+
+def _aggregate_with_sustained() -> dict:
+    """Aggregate covering all 5 canonical suites with rich extras."""
+    return {
+        "runs_root": "/results/benchmarks/run-x",
+        "total_runs": 5,
+        "suites": [
+            {
+                "suite": "openclaw_speed",
+                "models": [
+                    {"model": "alpha", "passes": 4, "total": 4, "pass_rate": 1.0, "runs": 1, "avg_ttft_ms": 120.0, "avg_tokens_per_s": 42.0},
+                    {"model": "bravo", "passes": 3, "total": 4, "pass_rate": 0.75, "runs": 1, "avg_ttft_ms": 380.0, "avg_tokens_per_s": 28.0},
+                ],
+            },
+            {
+                "suite": "code_generation",
+                "models": [
+                    {
+                        "model": "alpha", "passes": 7, "total": 10, "pass_rate": 0.7, "runs": 1,
+                        "avg_ttft_ms": None, "avg_tokens_per_s": None,
+                        "benchmarks": [
+                            {"benchmark": "humaneval", "tasks": 5, "pass_at_1": 0.8},
+                            {"benchmark": "mbpp", "tasks": 5, "pass_at_1": 0.6},
+                        ],
+                    },
+                ],
+            },
+            {
+                "suite": "sustained_throughput",
+                "models": [
+                    {
+                        "model": "alpha", "passes": 50, "total": 50, "pass_rate": 1.0, "runs": 1,
+                        "avg_ttft_ms": None, "avg_tokens_per_s": 38.0,
+                        "initial_tokens_per_s": 42.0, "sustained_tokens_per_s": 38.0,
+                        "throttle_ratio": 0.905, "peak_temp_c": 78.0,
+                        "windows": [
+                            {"start_s": 0, "tokens_per_s": 42.0},
+                            {"start_s": 60, "tokens_per_s": 41.5},
+                            {"start_s": 120, "tokens_per_s": 39.0},
+                            {"start_s": 180, "tokens_per_s": 38.0},
+                        ],
+                    },
+                ],
+            },
+        ],
+        "runs": [],
+    }
+
+
+def test_canonical_renderer_dispatches_to_suite_specific_dashboards() -> None:
+    html = render_canonical_report_html(_aggregate_with_sustained())
+    # openclaw_speed: 3-up grid with TTFT (lower=better) and tok/s panel
+    assert "Speed probe" in html
+    assert "TTFT (ms · lower is better)" in html
+    assert "Decode throughput" in html
+    # code_generation: per-benchmark stacked bars
+    assert "Aggregate pass@1" in html
+    assert "Per-benchmark passes" in html
+    assert "humaneval" in html
+    assert "mbpp" in html
+    # sustained_throughput: dual bars + gauge + thermometer + line chart
+    assert "Initial vs sustained" in html
+    assert "Throttle ratio" in html
+    assert "Peak GPU temperature" in html
+    assert "Throughput over time" in html
+    # Stat tiles strip is present
+    assert 'class="stat-tiles"' in html
+    assert "Top model score" in html
+
+
+def test_canonical_renderer_color_codes_pass_rate_cells_in_overall_ranking() -> None:
+    html = render_canonical_report_html(_aggregate_with_sustained())
+    # The overall ranking row uses _cell_pct_html for grounding /
+    # structured columns. Even when those rates are 0, the cell carries
+    # a data-band attribute.
+    assert 'class="cell-pct" data-band=' in html
+    assert "--cell-pct:" in html
+
+
+def test_canonical_renderer_falls_back_when_suite_is_unknown() -> None:
+    aggregate = {
+        "runs_root": "/tmp",
+        "total_runs": 1,
+        "suites": [
+            {
+                "suite": "experimental_new_suite_v0",
+                "models": [
+                    {"model": "alpha", "passes": 5, "total": 10, "pass_rate": 0.5, "runs": 1, "avg_ttft_ms": None, "avg_tokens_per_s": None},
+                ],
+            }
+        ],
+        "runs": [],
+    }
+    html = render_canonical_report_html(aggregate)
+    # Falls back to generic single-bar dashboard, not raising.
+    assert "experimental_new_suite_v0" in html
+    assert "Pass rate" in html
+
+
+# --------------------------------------------------------------------- #
+# Custom summary new chrome                                             #
+# --------------------------------------------------------------------- #
+
+
+def test_custom_summary_html_has_hero_and_stat_tiles() -> None:
+    html = render_custom_summary_html(_custom_summary_minimal())
+    # Hero with cyan-tinted gradient (style="..." inline), stat tiles
+    # underneath, completed/errored counters, fastest tps tile.
+    assert 'class="hero"' in html
+    assert 'class="stat-tiles"' in html
+    assert "Completed" in html
+    assert "Errored" in html
+    assert "Fastest decode" in html
+
+
+def test_custom_summary_html_renders_per_task_charts_inside_details() -> None:
+    html = render_custom_summary_html(_custom_summary_minimal())
+    # Each task block now contains a 2-up grid: TTFT (lower is better)
+    # and Output length panels. Errored rows skip the metrics panels
+    # but still contribute to the error strip in the summary header.
+    assert "TTFT (ms · lower is better)" in html
+    assert "Output length" in html
+    # Errored task carries the "contains errors" badge.
+    assert "contains errors" not in html or "TimeoutError" in html
+
+
+# --------------------------------------------------------------------- #
+# Lazy-load integration: reliability suite reads results.jsonl          #
+# --------------------------------------------------------------------- #
+
+
+def test_canonical_renderer_loads_per_task_pass_fail_from_run_dir() -> None:
+    """End-to-end: render a reliability suite where the model entry
+    points at a real ``run_dir`` containing a ``results.jsonl``. The
+    dashboard should include a per-task strip rendered from that file.
+    """
+    with TemporaryDirectory() as tmp:
+        run_dir = Path(tmp) / "hallucination_grounding"
+        run_dir.mkdir()
+        (run_dir / "results.jsonl").write_text(
+            '{"task_id": "t1", "model": "alpha", "evaluation": {"passed": true}}\n'
+            '{"task_id": "t2", "model": "alpha", "evaluation": {"passed": false}}\n'
+            '{"task_id": "t3", "model": "alpha", "evaluation": {"passed": true}}\n',
+            encoding="utf-8",
+        )
+        aggregate = {
+            "runs_root": str(tmp),
+            "total_runs": 1,
+            "suites": [
+                {
+                    "suite": "hallucination_grounding",
+                    "models": [
+                        {
+                            "model": "alpha", "passes": 2, "total": 3, "pass_rate": 0.667,
+                            "runs": 1, "avg_ttft_ms": 130.0, "avg_tokens_per_s": 40.0,
+                            "run_dir": str(run_dir),
+                        },
+                    ],
+                },
+            ],
+            "runs": [],
+        }
+        html = render_canonical_report_html(aggregate)
+        # Per-task strip rendered: 2 passes + 1 fail, in input order.
+        assert 'class="cell pass"' in html
+        assert 'class="cell fail"' in html
+        # Hint text mentions "green = pass, red = fail".
+        assert "green = pass" in html
 
 
 def _run_all() -> int:

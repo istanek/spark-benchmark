@@ -9,6 +9,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Marketing-grade HTML reports — second pass.** The HTML reports
+  picked up a complete visual overhaul on top of the standalone-file
+  foundation introduced earlier in this release. Same single-file
+  invariants (no JavaScript, no CDN, no external assets), but the
+  visual quality is now "would happily attach this to a board deck"
+  rather than "minimum viable HTML":
+  - **Hero banner** at the top of every report — radial-gradient
+    purple/indigo background (cyan-leaning for custom runs so the
+    two flavours are visually distinct), display-size H1, subtitle
+    pulled from the request prompt, and a glassmorphism "Recommended
+    pick" winner card with the model name and a one-line justification
+    ("perfect grounding reliability; TTFT 120 ms; 42.0 tok/s").
+  - **Stat-tile strip** under the hero — five tiles for canonical
+    bundles (models tested, suites run, total tasks, overall pass
+    rate colour-graded, top model score) and four for custom runs
+    (completed pairs, errored pairs, fastest decode model, lowest
+    TTFT model).
+  - **Verdict card** with a soft gradient background and indigo accent
+    border, replacing the bare-bones verdict paragraph.
+  - **Color-coded pass-rate cells.** Every percentage cell in the
+    canonical report tables now carries a CSS ``--cell-pct`` custom
+    property and a ``data-band`` (good / warn / bad / na) attribute,
+    rendering a proportional fill behind the value (≥95 % green,
+    80–95 % amber, <80 % red).
+  - **Sticky table headers** so column labels stay visible while
+    scrolling long rankings.
+  - **Print stylesheet** (``@media print``) — gradients flatten to
+    flat colours, shadows vanish, ``<details>`` collapses cleanly,
+    every ``break-inside`` is set to avoid cutting tables / cards.
+- **Per-suite dashboard cards with suite-specific charts.** Each of
+  the five canonical suites now renders into a dashboard card with
+  a 3-up grid of charts tailored to *that* suite, plus the shared
+  per-model results table:
+  - **``openclaw_speed``** — pass rate (good-bg gradient) + TTFT bar
+    chart with **inverted colour** (lower = greener = better) +
+    decode throughput (tok/s) bars in green.
+  - **``hallucination_grounding``** and
+    **``practical_structured_output``** — pass rate + TTFT
+    (inverted) + a wide **per-task pass-fail strip** (green / red /
+    grey squares per task) loaded lazily from the suite's
+    ``results.jsonl``.
+  - **``code_generation``** — aggregate pass@1 + **per-benchmark
+    stacked bars** (HumanEval / MBPP / …) + a wide **sandbox-status
+    breakdown** (passed / failed / timeout / oom / compile_error /
+    runtime_error) loaded from per-row sandbox status fields.
+  - **``sustained_throughput``** — initial vs sustained
+    **dual-bar** per model + per-model **throttle-ratio gauges**
+    (semicircle SVG arcs, colour-graded) + per-model **peak-temp
+    thermometers** + a wide **tps-over-time line chart** with an
+    optional GPU-temperature overlay (dashed secondary axis) loaded
+    from ``telemetry-<model>.jsonl``.
+- **New SVG primitives** in ``reporting_html``: ``_svg_line_chart``
+  (multi-series with optional secondary axis, adaptive grid lines,
+  inline legend), ``_svg_gauge`` (180° semicircle, colour-graded,
+  optional invert), ``_svg_dual_bars`` (paired thin bars with shared
+  scale), ``_svg_stacked_bars`` (segmented bar with hint counts),
+  ``_svg_thermometer`` (vertical bar + bulb), ``_pass_fail_strip_html``
+  (per-model task-by-task dot strip). All inline-SVG, all
+  ``viewBox``-based so they scale with the container.
+- **Lazy data loaders** for the renderer:
+  ``_load_results_rows(run_dir)`` reads ``results.jsonl`` (skips
+  malformed lines, returns empty on missing file),
+  ``_load_telemetry_samples(run_dir, model, max_points=240)`` reads
+  ``telemetry-<model>.jsonl`` and uniformly downsamples (a
+  30-minute soak with ~18 000 points compresses to a 240-point
+  curve under a few KB).
+- **Custom (BYOT) / quick run polish.** ``summary.html`` now ships
+  with the same hero / stat-tile chrome (cyan-tinted gradient so it's
+  visually distinct from a canonical bundle), each ``<details>``
+  task block opens with a 2-up mini-chart row showing **TTFT
+  comparison** (lower is better, inverted colour) and **output
+  length** (decode tokens) per model, and the task summary header
+  carries a small **error strip** of dots so the user can scan a
+  long suite for failures without expanding every block.
+- **Plumbing in ``aggregate_runs``.** Per-model entries now forward
+  ``windows`` (sustained-throughput per-window throughput series),
+  ``benchmarks`` (code-generation per-benchmark breakdown), and
+  ``run_dir`` (so the HTML renderer can lazy-load
+  ``results.jsonl`` / ``telemetry-*.jsonl`` without re-walking the
+  filesystem). Markdown / CLI summaries are unchanged.
+- **27 new tests** in ``tests/test_reporting_html.py`` covering
+  every new SVG helper (line chart with secondary axis, gauge with
+  invert, dual bars, stacked bars normalising per-row, thermometer,
+  pass-fail strip), color helpers (``_gradient_color_for_ratio``,
+  ``_band_for_pass_rate``, ``_cell_pct_html``), lazy loaders
+  (results.jsonl + telemetry downsampling + missing-file
+  fallbacks), suite-specific dispatch (all 5 suites + unknown-suite
+  fallback), color-coded ranking cells, and a true end-to-end
+  reliability render that builds a ``results.jsonl`` on disk and
+  asserts the per-task strip survives the round-trip. Total HTML
+  test count: 38 (was 11).
+
 - **Polished standalone HTML reports.** New
   ``spark_benchmark.reporting_html`` module renders both flavours of
   run output as a single self-contained HTML page — no JavaScript,
