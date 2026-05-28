@@ -13,7 +13,8 @@ If you only read one diagram, read this one:
 │   cli.py (Typer)         shell.py (curses TUI)                               │
 │   ├─ run                 ├─ Run     → do_run                                 │
 │   ├─ run-custom          ├─ Custom  → do_custom (BYOT, 0.2.1+)               │
-│   ├─ validate-custom     ├─ Models  → show_models                            │
+│   ├─ validate-custom     ├─ Quick   → do_quick (ad-hoc, 0.2.2+)              │
+│   ├─ quick               ├─ Models  → show_models                            │
 │   ├─ console             ├─ Suites  → show_suites                            │
 │   ├─ benchmark           ├─ Info    → show_info                              │
 │   ├─ wizard              ├─ Chat    → do_chat / chat_command                 │
@@ -249,6 +250,32 @@ A canonical "run a benchmark" path:
   - Bundle layout: `results/custom/<slug>/<run-id>/` with
     `manifest.json` tagged `kind: "custom"` so reporting can keep
     custom runs visually distinct.
+
+- **`quick.py`** — ad-hoc one-shot prompt fan-out. Front door for
+  the "I just want to type a prompt and see what every model says"
+  workflow that shipped in v0.2.2.
+  - `build_quick_suite(prompt, name=None, sampling=None)` →
+    `CustomSuiteDefinition` with one task whose `task_id` is
+    `QUICK_TASK_ID == "ad-hoc"`. Fed straight into
+    `run_custom_suite_quick` — there is no parallel runner.
+  - `default_quick_suite_name(prompt)` /
+    `_slugify_prompt_head(prompt)` — derive a `quick-<slug>` name
+    from the prompt's first ~40 characters.
+  - `default_save_dir(repo_root)` returns
+    `examples/custom-tests/quick-saved/`. The directory is git-
+    ignored (see `.gitignore`) and reused by
+    `shell.discover_custom_suites` for free.
+  - `save_quick_suite_as_yaml(suite, save_root, name=None,
+    overwrite=False)` emits a tidy YAML (with a generated header
+    comment, empty optional fields trimmed) so a saved prompt
+    re-loads cleanly through `load_custom_suite`.
+  - Surfaces: `cli.quick_command` (positional prompt, `--save`,
+    `--save-path`, `--overwrite`, `--name`, `--models`,
+    `--allow-auto-detected`, `--output-dir`) and
+    `shell.TUIApp.do_quick`. Manifests carry
+    `source: "cli-quick" | "shell-quick"` and
+    `ad_hoc_prompt: true` so reporting can tell quick runs apart
+    from full custom-suite runs.
 
 ### Data model
 

@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Quick (ad-hoc one-shot prompts).** New
+  ``spark_benchmark.quick`` module surfaces the lightest BYOT
+  workflow yet — type one prompt, fan it out to every model you
+  picked, get the same ``summary.md`` ``run-custom`` produces. No
+  YAML required up front.
+- **CLI command ``spark-bench quick "your prompt here"``.** Builds
+  a one-task ``CustomSuiteDefinition`` in memory
+  (``task_id="ad-hoc"``) and feeds it to the existing
+  ``run_custom_suite_quick`` runner — single runner, single
+  summary format, single results layout. Flags: ``--models``,
+  ``--allow-auto-detected`` (default ON), ``--name`` (overrides the
+  ``quick-<slug>`` default), ``--save`` / ``--save-path`` /
+  ``--overwrite`` to persist the prompt as a reusable suite YAML,
+  and ``--output-dir``.
+- **TUI menu entry ``Quick``.** Sits between ``Custom`` and
+  ``Models``. Walks the user through model multi-select → drops
+  out of curses to read a single-line prompt on the regular TTY →
+  runs ``run_custom_suite_quick`` with progress streaming into the
+  log → asks ``Save this prompt as a reusable custom suite?
+  [y/N]`` afterwards. If saved, the run's ``manifest.json`` is
+  patched in place so ``suite_path`` points at the saved YAML and
+  ``discover_custom_suites`` surfaces it next time.
+- **Saved-quick layout.** ``examples/custom-tests/quick-saved/`` is
+  the default save root. The directory is **git-ignored** (added
+  to ``.gitignore``) so personal one-shots stay out of source
+  control while still being findable by the existing TUI discovery
+  helper.
+- **Manifest provenance fields.** Quick runs carry
+  ``source: "cli-quick" | "shell-quick"`` and
+  ``ad_hoc_prompt: true`` so reports can tell quick runs apart
+  from canonical custom-suite runs (which use ``"cli"`` /
+  ``"shell"``).
+- **``tests/test_quick.py``** — 12 plain-Python tests covering
+  ``build_quick_suite`` (one task, ad-hoc id, default-name slug,
+  empty-prompt rejection, sampling pass-through, punctuation-only
+  fallback), ``save_quick_suite_as_yaml`` (round-trip through
+  ``load_custom_suite``, refuses to clobber by default,
+  ``overwrite=True`` replaces, empty optional fields trimmed), and
+  an end-to-end run against a fake backend asserting one row per
+  ``(model, ad-hoc)`` pair.
+
+### Changed
+
+- ``shell.MENU_ITEMS`` gained ``("quick", "Quick")``; dispatch
+  routes Enter on it to ``TUIApp.do_quick``.
+- ``CONTRIBUTING.md`` is unchanged; ``README.txt``,
+  ``docs/README.md``, ``docs/architecture.md``,
+  ``docs/custom-tests-spec.md``, and
+  ``.cursor/rules/project-overview.mdc`` were extended to cover
+  the new entry point.
+
 ## [0.2.1] - 2026-05-28
 
 Polish release on top of 0.2.0. Surfaces the BYOT subsystem in the

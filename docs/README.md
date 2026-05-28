@@ -50,8 +50,8 @@ share models, suites, sampling, and reporting.
 
 ### `spark-bench shell` — full curses TUI
 
-Launches a full-screen menu (`Run / Custom / Models / Suites / Info /
-Chat / Refresh / Quit`) that lets you:
+Launches a full-screen menu (`Run / Custom / Quick / Models / Suites /
+Info / Chat / Refresh / Quit`) that lets you:
 
 - live-detect models from a running Ollama (`/api/tags`), match them
   against the experiment's `configs/models/*.yaml`, and grey out
@@ -71,6 +71,12 @@ Chat / Refresh / Quit`) that lets you:
   validates it, multi-selects models, and writes a fresh run bundle
   to `results/custom/<slug>/<run-id>/` with `source: shell` in the
   manifest;
+- run **one ad-hoc prompt against every model** (`Quick`, since 0.2.2) —
+  multi-selects models, drops out of curses to read a single-line
+  prompt on the regular TTY, fans the prompt out via the same
+  `run_custom_suite_quick` runner, then asks "save this prompt as a
+  reusable custom suite?" so the next time it appears in the
+  `Custom` discovery list. CLI mirror: `spark-bench quick "..."`;
 - drop into the Chat panel to talk to a single picked model without
   leaving the TUI;
 - inspect suite metadata (description, task count, fixture path) before
@@ -172,6 +178,40 @@ There is no scoring in v0.2.0 — `quick` mode is pass-through only. See
 [`custom-tests-spec.md`](custom-tests-spec.md) for the v0.3.0+ roadmap
 that adds deterministic scorers, sandboxed custom-Python scorers, and
 a local LLM-as-judge.
+
+### `spark-bench quick` — one prompt, all models, no YAML
+
+The lightest BYOT entry point. Type one prompt on the command line,
+get the same side-by-side `summary.md` `run-custom` produces, no
+YAML required.
+
+```bash
+PYTHONPATH=src python3 -m spark_benchmark.cli quick \
+  "Vysvětli česky idiom 'házet hrách na zeď' a uveď moderní příklad." \
+  --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark
+```
+
+Internally it builds a one-task `CustomSuiteDefinition` with
+`task_id="ad-hoc"` and feeds it to the same
+`run_custom_suite_quick` runner — there's only one runner, one
+summary format, one results layout. Adds three quick-only flags:
+
+- `--name <slug>` overrides the default `quick-<slug-from-prompt>`
+  suite name (also drives the run-bundle directory).
+- `--save` (or `--save-path <dir>`) writes the prompt as a
+  reusable suite YAML to `examples/custom-tests/quick-saved/<slug>/`
+  by default. That folder is git-ignored — quick prompts are
+  personal scratchpads, not shipped templates — but
+  `shell.discover_custom_suites` picks it up so the saved prompt
+  shows up in the TUI's Custom menu next time.
+- `--overwrite` allows replacing an existing saved suite at the
+  target path.
+
+Manifest fields specific to the quick path: `source: "cli-quick"`
+(or `"shell-quick"` from the TUI), and `ad_hoc_prompt: true`. See
+[`custom-tests-spec.md`](custom-tests-spec.md) → "Quick (ad-hoc
+one-shot prompts)" for the full design.
 
 ### What `--allow-auto-detected` actually does
 

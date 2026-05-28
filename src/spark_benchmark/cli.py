@@ -27,6 +27,12 @@ from spark_benchmark.custom_suites import (
     slugify_suite_name,
     validate_custom_suite,
 )
+from spark_benchmark.quick import (
+    QUICK_TASK_ID,
+    build_quick_suite,
+    default_save_dir,
+    save_quick_suite_as_yaml,
+)
 from spark_benchmark.model_registry import (
     detect_ollama_models,
     find_config_by_name_or_tag,
@@ -882,6 +888,217 @@ def run_custom_command(
                 "summary_md": str(run_dir / "summary.md"),
                 "summary_json": str(run_dir / "summary.json"),
                 "task_count": len(loaded.tasks),
+                "models": [cfg.name for cfg in selected_configs],
+                "per_model": [
+                    {
+                        "model": bucket["model"],
+                        "completed": bucket["tasks_completed"],
+                        "errored": bucket["tasks_errored"],
+                        "mean_ttft_ms": bucket["mean_ttft_ms"],
+                        "mean_decode_tps": bucket["mean_decode_tps"],
+                    }
+                    for bucket in summary["per_model"]
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+
+
+@app.command("quick")
+def quick_command(
+    prompt: str = typer.Argument(
+        ...,
+        help=(
+            "The prompt to fan out to every selected model. Use shell quoting "
+            "for multi-line input (e.g. bash $'...' or a quoted heredoc)."
+        ),
+    ),
+    experiment: Path = typer.Option(
+        ...,
+        "--experiment",
+        exists=True,
+        dir_okay=False,
+        help="Experiment YAML — provides the backend and the curated model pool.",
+    ),
+    platform: str = typer.Option(..., "--platform"),
+    models: str | None = typer.Option(
+        None,
+        "--models",
+        help=(
+            "Comma-separated model names to fan the prompt out to. Defaults "
+            "to every chat-capable model the resolver returns "
+            "(curated + auto-detected, vision/embedding tags filtered)."
+        ),
+    ),
+    allow_auto_detected: bool = typer.Option(
+        True,
+        "--allow-auto-detected/--no-allow-auto-detected",
+        help=(
+            "Defaults to True. The whole point of `quick` is to compare "
+            "whatever you happen to have pulled in Ollama; pass "
+            "--no-allow-auto-detected to restrict the lineup to the "
+            "experiment YAML."
+        ),
+    ),
+    name: str | None = typer.Option(
+        None,
+        "--name",
+        help=(
+            "Human-readable suite name (also used as the run-bundle slug). "
+            "Defaults to a slug derived from the first ~40 chars of the "
+            "prompt, prefixed with `quick-`."
+        ),
+    ),
+    save: bool = typer.Option(
+        False,
+        "--save/--no-save",
+        help=(
+            "Persist the prompt as a reusable custom suite YAML before the "
+            "run starts. Saved under examples/custom-tests/quick-saved/<slug>/ "
+            "(git-ignored) so the TUI's Custom menu surfaces it next time."
+        ),
+    ),
+    save_path: Path | None = typer.Option(
+        None,
+        "--save-path",
+        help=(
+            "Override the save location entirely. Implies --save. "
+            "Must be an absolute or relative directory; suite.yaml is "
+            "written inside it."
+        ),
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Allow saving over an existing suite.yaml at the target path.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        help="Where to write the run bundle. Defaults to results/custom/<slug>/<run-id>/.",
+    ),
+) -> None:
+    """Fan out a single ad-hoc prompt to every selected model.
+
+    This is BYOT Mode A's lightest entry point — no YAML required.
+    The prompt is built into a one-task ``CustomSuiteDefinition`` in
+    memory and run through the same pipeline as ``run-custom``, so the
+    output (``results/custom/<slug>/<run-id>/`` with ``manifest.json``,
+    ``results.jsonl``, ``summary.md``, ``summary.json``) is identical
+    to what a full custom suite produces.
+    """
+    maybe_print_banner()
+
+    repo_root, experiment_spec, backend_config, experiment_model_configs = load_runtime_context(
+        experiment, platform
+    )
+    resolved = resolve_runnable_models(
+        backend_config=backend_config,
+        experiment_model_configs=experiment_model_configs,
+        allow_auto_detected=allow_auto_detected,
+    )
+    available_models = [m.name for m in resolved.configs]
+    if not available_models:
+        raise typer.BadParameter(
+            "no runnable models found. Pull at least one chat-capable model "
+            "into Ollama (or pass --no-allow-auto-detected with an experiment "
+            "whose curated lineup is on disk)."
+        )
+
+    if models:
+        wanted = [name.strip() for name in models.split(",") if name.strip()]
+    else:
+        wanted = available_models
+
+    selected_configs = []
+    for needle in wanted:
+        cfg = find_config_by_name_or_tag(
+            needle, configs=resolved.configs, classified=resolved.classified
+        )
+        if cfg is None:
+            raise typer.BadParameter(
+                f"model {needle!r} not found. Available: {', '.join(available_models)}"
+            )
+        if cfg not in selected_configs:
+            selected_configs.append(cfg)
+    if not selected_configs:
+        raise typer.BadParameter("no models selected for the quick run")
+
+    suite = build_quick_suite(
+        prompt,
+        name=name,
+        sampling=experiment_spec.sampling,
+    )
+
+    saved_path: Path | None = None
+    if save or save_path is not None:
+        save_root = save_path if save_path is not None else default_save_dir(repo_root)
+        try:
+            saved_path = save_quick_suite_as_yaml(
+                suite, save_root=save_root, overwrite=overwrite
+            )
+        except FileExistsError as exc:
+            raise typer.BadParameter(
+                f"a suite.yaml already exists at {exc}; pass --overwrite to replace it"
+            ) from exc
+
+    run_id = make_run_id()
+    if output_dir is not None:
+        run_dir = output_dir
+    else:
+        run_dir = (
+            repo_root
+            / "results"
+            / "custom"
+            / slugify_suite_name(suite.name)
+            / run_id
+        )
+    run_dir.mkdir(parents=True, exist_ok=True)
+    write_json(
+        run_dir / "manifest.json",
+        {
+            "kind": "custom",
+            "run_id": run_id,
+            "suite": suite.name,
+            "suite_version": suite.version,
+            "suite_path": str(saved_path) if saved_path is not None else None,
+            "experiment": experiment_spec.name,
+            "platform": platform,
+            "backend": backend_config.name.value,
+            "models": [cfg.name for cfg in selected_configs],
+            "task_count": len(suite.tasks),
+            "mode": suite.mode,
+            "auto_detected_models": [
+                cfg.name for cfg in resolved.auto_detected_configs if cfg in selected_configs
+            ],
+            "source": "cli-quick",
+            "ad_hoc_prompt": True,
+        },
+    )
+
+    backend = build_backend(backend_config)
+    summary = run_custom_suite_quick(
+        suite=suite,
+        backend=backend,
+        backend_config=backend_config,
+        model_configs=selected_configs,
+        run_dir=run_dir,
+        default_sampling=experiment_spec.sampling,
+        progress_callback=lambda message: console.print(f"[cyan]{message}[/cyan]"),
+        resume=False,  # quick runs are single-task; resume would just re-skip the row.
+    )
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "run_dir": str(run_dir),
+                "results": str(run_dir / "results.jsonl"),
+                "summary_md": str(run_dir / "summary.md"),
+                "summary_json": str(run_dir / "summary.json"),
+                "saved_suite_yaml": str(saved_path) if saved_path is not None else None,
+                "task_id": QUICK_TASK_ID,
                 "models": [cfg.name for cfg in selected_configs],
                 "per_model": [
                     {

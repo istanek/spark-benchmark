@@ -136,6 +136,77 @@ Defaults:
   `results.jsonl` and skips every `(model, task_id)` pair that's already
   there.
 
+## Quick (ad-hoc one-shot prompts) — v0.2.2+
+
+Sometimes you don't have a YAML; you just want to type *one* prompt
+and see what every model on the box says back. ``quick`` is the
+front door for that workflow. Internally it builds a one-task
+``CustomSuiteDefinition`` in memory (``task_id="ad-hoc"``) and feeds
+it to the same ``run_custom_suite_quick`` runner — there is exactly
+one runner, one summary format, one results layout.
+
+CLI:
+
+```bash
+# Bare minimum — fan a prompt out to every chat-capable model in Ollama:
+spark-bench quick "Explain in Czech: what does 'házet hrách na zeď' mean?" \
+  --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark
+
+# Restrict to two models and persist the prompt as a reusable suite:
+spark-bench quick "Compare these two paragraphs..." \
+  --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark \
+  --models qwen-3.6,phi4-14b \
+  --save --name compare-paragraphs
+```
+
+Flags:
+
+- ``--allow-auto-detected`` defaults to **ON**, same reasoning as
+  ``run-custom``: ``quick`` exists precisely to compare whatever you
+  happen to have pulled.
+- ``--name`` overrides the human-readable suite name (also drives
+  the run-bundle directory). Defaults to ``quick-<slug>`` where the
+  slug comes from the first ~40 characters of the prompt.
+- ``--save`` (``--no-save`` is default) writes a real YAML to
+  ``examples/custom-tests/quick-saved/<slug>/suite.yaml`` so the TUI
+  picks it up next time. ``--save-path`` overrides the destination
+  directory entirely; ``--overwrite`` allows clobbering an existing
+  file.
+
+Saved location:
+
+The default ``examples/custom-tests/quick-saved/`` directory is
+**git-ignored**. Quick prompts are personal scratchpads, not shipped
+templates — keep them out of source control.
+
+TUI:
+
+The curses TUI's ``Quick`` menu entry walks through the same flow:
+
+1. Multiselect models (curated + auto-detected; vision/embedding
+   filtered as everywhere else).
+2. Drop out of curses, prompt for the prompt on the regular TTY
+   (single line — the input is read with ``typer.prompt``). Empty
+   input cancels.
+3. Run via ``run_custom_suite_quick``, streaming progress into the
+   log pane.
+4. After the run, ask ``Save this prompt as a reusable custom
+   suite? [y/N]``. If yes, prompt for a suite name and write
+   ``examples/custom-tests/quick-saved/<slug>/suite.yaml``; the
+   manifest's ``suite_path`` is patched to the saved file so the
+   discover helper surfaces it next time.
+
+Manifest fields specific to the quick path:
+
+- ``source: "cli-quick"`` from the CLI command, ``"shell-quick"``
+  from the TUI, so reporting can tell apart automated CLI runs from
+  interactive TUI runs from canonical custom-suite runs (which use
+  ``"cli"`` and ``"shell"``).
+- ``ad_hoc_prompt: true`` flags the manifest as having been
+  synthesized from a single prompt rather than loaded from a YAML.
+
 ## TUI surface (v0.2.1+)
 
 The curses TUI (`spark-bench shell`) gained a top-level **Custom**

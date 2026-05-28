@@ -20,6 +20,11 @@ from spark_benchmark.custom_suites import (
     slugify_suite_name,
     validate_custom_suite,
 )
+from spark_benchmark.quick import (
+    build_quick_suite,
+    default_save_dir,
+    save_quick_suite_as_yaml,
+)
 from spark_benchmark.model_registry import (
     DetectedOllamaModel,
     OllamaModelInfo,
@@ -66,6 +71,7 @@ SUITE_REGISTRY: dict[str, dict[str, str]] = {
 MENU_ITEMS: list[tuple[str, str]] = [
     ("run", "Run"),
     ("custom", "Custom"),
+    ("quick", "Quick"),
     ("models", "Models"),
     ("suites", "Suites"),
     ("info", "Info"),
@@ -643,6 +649,8 @@ class TUIApp:
                 self.do_run(stdscr)
             elif action == "custom":
                 self.do_custom(stdscr)
+            elif action == "quick":
+                self.do_quick(stdscr)
             elif action == "chat":
                 self.do_chat(stdscr)
         except Exception as exc:  # noqa: BLE001
@@ -1014,6 +1022,199 @@ class TUIApp:
                     wanted.add(idx)
                     break
         return wanted
+
+    def do_quick(self, stdscr: Any) -> None:
+        """Fan out a single ad-hoc prompt to every selected model.
+
+        BYOT Mode A's lightest entry point — no YAML required up front.
+        Mirrors ``spark-bench quick "..."`` on the CLI but adds an
+        interactive prompt input step and a post-run "save?" prompt.
+        """
+        resolved = resolve_runnable_models(
+            backend_config=self.ctx.backend_config,
+            experiment_model_configs=self.ctx.model_configs,
+            allow_auto_detected=True,
+        )
+        if not resolved.classified:
+            self.log_blank()
+            self.log("── Quick (ad-hoc prompt) ──")
+            self.log("  No models detected via Ollama. Is the daemon running?")
+            return
+
+        model_labels: list[str] = []
+        disabled: set[int] = set()
+        defaults: set[int] = set()
+        for idx, item in enumerate(resolved.classified):
+            if not item.has_config:
+                reason = item.disable_reason or "no config"
+                model_labels.append(f"{item.tag}  ({reason})")
+                disabled.add(idx)
+                continue
+            if item.auto_detected:
+                model_labels.append(f"{item.tag}  (auto)")
+            else:
+                model_labels.append(f"{item.display_name}  [{item.tag}]")
+            defaults.add(idx)
+
+        picked = _curses_multiselect(
+            stdscr,
+            "Select models for the quick prompt:",
+            model_labels,
+            preselected=defaults,
+            disabled=disabled,
+            header_lines=BANNER_LINES,
+        )
+        if not picked:
+            self.log_blank()
+            self.log("── Quick (ad-hoc prompt) ──")
+            self.log("(no models selected)")
+            return
+        selected_configs: list[ModelConfig] = []
+        for idx in picked:
+            cfg = resolved.classified[idx].config
+            if cfg is not None and cfg not in selected_configs:
+                selected_configs.append(cfg)
+        if not selected_configs:
+            self.log_blank()
+            self.log("(no usable models selected)")
+            return
+
+        # Drop out of curses to read the prompt on the regular TTY.
+        curses.endwin()
+        print()
+        print("=== Quick prompt ===")
+        print("Type a single line and press Enter. Empty input cancels.")
+        print("(For multi-line prompts, save them as a YAML and use Custom.)")
+        try:
+            prompt_text = typer.prompt("prompt", default="", show_default=False).strip()
+        except (EOFError, KeyboardInterrupt):
+            prompt_text = ""
+        # Hand the screen back to curses for the run.
+        stdscr.clear()
+        stdscr.refresh()
+        if not prompt_text:
+            self.log_blank()
+            self.log("── Quick (ad-hoc prompt) ──")
+            self.log("(cancelled — empty prompt)")
+            return
+
+        try:
+            suite = build_quick_suite(prompt_text, sampling=self.ctx.experiment.sampling)
+        except ValueError as exc:
+            self.log_blank()
+            self.log(f"Failed to build quick suite: {exc}")
+            return
+
+        run_id = make_run_id()
+        run_dir = (
+            self.ctx.repo_root
+            / "results"
+            / "custom"
+            / slugify_suite_name(suite.name)
+            / run_id
+        )
+        run_dir.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "kind": "custom",
+            "run_id": run_id,
+            "suite": suite.name,
+            "suite_version": suite.version,
+            # Filled in if the user opts to save the prompt after the run.
+            "suite_path": None,
+            "experiment": self.ctx.experiment.name,
+            "platform": self.ctx.platform.name,
+            "backend": self.ctx.backend_config.name.value,
+            "models": [cfg.name for cfg in selected_configs],
+            "task_count": len(suite.tasks),
+            "mode": suite.mode,
+            "auto_detected_models": [
+                cfg.name
+                for cfg in resolved.auto_detected_configs
+                if cfg in selected_configs
+            ],
+            "source": "shell-quick",
+            "ad_hoc_prompt": True,
+        }
+        write_json(run_dir / "manifest.json", manifest)
+
+        self.log_blank()
+        self.log("── Quick (ad-hoc prompt) ──")
+        self.log(f"  Suite name: {suite.name}")
+        self.log(f"  Models:     {', '.join(cfg.name for cfg in selected_configs)}")
+        self.log(f"  Run dir:    {run_dir}")
+        self.log_blank()
+        # Show the prompt itself, truncated, so the user can confirm it's
+        # what they typed before the slow part starts.
+        preview = prompt_text if len(prompt_text) <= 200 else prompt_text[:197] + "..."
+        self.log(f"  Prompt:     {preview}")
+        self.log_blank()
+        self.draw(stdscr)
+
+        backend = build_backend(self.ctx.backend_config)
+
+        def progress(message: str) -> None:
+            self.log(message)
+            self.draw(stdscr)
+
+        try:
+            run_custom_suite_quick(
+                suite=suite,
+                backend=backend,
+                backend_config=self.ctx.backend_config,
+                model_configs=selected_configs,
+                run_dir=run_dir,
+                default_sampling=self.ctx.experiment.sampling,
+                progress_callback=progress,
+                resume=False,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.log_blank()
+            self.log(f"Run failed mid-flight: {exc}")
+            self.log(f"Partial results: {run_dir / 'results.jsonl'}")
+            return
+
+        self.log_blank()
+        self.log("Done.")
+        self.log(f"  results:  {run_dir / 'results.jsonl'}")
+        self.log(f"  summary:  {run_dir / 'summary.md'}")
+        self.log(f"  json:     {run_dir / 'summary.json'}")
+
+        # Post-run "save?" prompt — outside curses so prompt/confirm work.
+        curses.endwin()
+        print()
+        try:
+            wants_save = typer.confirm(
+                "Save this prompt as a reusable custom suite?", default=False
+            )
+        except (EOFError, KeyboardInterrupt):
+            wants_save = False
+        saved_path: Path | None = None
+        if wants_save:
+            try:
+                default_name = suite.name
+                save_name = typer.prompt(
+                    "Suite name", default=default_name, show_default=True
+                ).strip() or default_name
+                save_root = default_save_dir(self.ctx.repo_root)
+                saved_path = save_quick_suite_as_yaml(
+                    suite, save_root=save_root, name=save_name
+                )
+                print(f"saved: {saved_path}")
+                # Patch the manifest so discover_custom_suites can surface it.
+                manifest["suite_path"] = str(saved_path)
+                write_json(run_dir / "manifest.json", manifest)
+            except FileExistsError as exc:
+                print(
+                    f"a suite already exists at {exc}; not overwriting. "
+                    "Re-run save manually with `spark-bench quick ... --save --overwrite`."
+                )
+            except Exception as exc:  # noqa: BLE001
+                print(f"save failed: {exc}")
+        stdscr.clear()
+        stdscr.refresh()
+        if saved_path is not None:
+            self.log_blank()
+            self.log(f"Saved as: {saved_path}")
 
     def do_chat(self, stdscr: Any) -> None:
         # Chat runs outside the TUI; the user exits it explicitly with /exit,

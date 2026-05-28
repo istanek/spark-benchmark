@@ -61,6 +61,15 @@ suites from `examples/custom-tests/**/suite.yaml` plus prior runs in
 `results/custom/<slug>/<run-id>/manifest.json` (helper:
 `shell.discover_custom_suites`) and writes manifests with
 `source: "shell"` so reporting can tell TUI runs apart from CLI runs.
+
+v0.2.2 adds **`spark_benchmark.quick`** — `build_quick_suite(prompt)`
+synthesises a one-task `CustomSuiteDefinition` in memory
+(`task_id="ad-hoc"`) and feeds it to the *same* `run_custom_suite_quick`
+runner. Surfaces: `spark-bench quick "..."` (CLI) and the TUI `Quick`
+menu entry (`do_quick`). Saved prompts default to the git-ignored
+`examples/custom-tests/quick-saved/<slug>/suite.yaml`. Manifests carry
+`source: "cli-quick" | "shell-quick"` and `ad_hoc_prompt: true`.
+
 See `docs/custom-tests-spec.md` for the full schema, run-bundle layout
 (`results/custom/<slug>/<run-id>/` with `kind: "custom"` manifest),
 and the v0.3+ roadmap. Custom suites are **deliberately separate**

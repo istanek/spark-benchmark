@@ -66,7 +66,7 @@ model in turn, runs every test, and gives you a side-by-side table.
   How do I actually run it?
 --------------------------------------------------------------------------------
 
-You have five ways to use the tool. Pick whichever fits how you like to
+You have six ways to use the tool. Pick whichever fits how you like to
 work.
 
 
@@ -85,6 +85,9 @@ work.
   The menu items are:
     Run      — pick models + canonical suites, run them now.
     Custom   — pick one of your own YAML test suites (BYOT, see Way 4).
+    Quick    — type ONE prompt right now, fan it out to every model
+               you tick, see the answers side by side. No YAML
+               required. (See Way 5.)
     Models   — list every Ollama model and whether it is ready to run.
     Suites   — list the canonical suites and their task counts.
     Info     — show the JSON metadata of one canonical suite.
@@ -186,7 +189,58 @@ work.
   actually care about.
 
 
-  Way 5 — describe what you want in a sentence
+  Way 5 — type one quick prompt, see all models reply
+  ---------------------------------------------------
+
+    spark-bench quick "Vysvětli česky, co znamená 'házet hrách na zeď'." \
+                      --experiment configs/experiments/spark-ollama-baseline.yaml \
+                      --platform spark
+
+  This is "Way 4 but without the YAML." Use this when you have ONE
+  thing you want to ask, and you want to see what every model on
+  your machine says back. No file to write, no schema to learn —
+  just type the prompt in quotes.
+
+  By default it fans the prompt out to every chat-capable model
+  Ollama reports (curated lineup + auto-detected). Restrict the
+  lineup with --models like everywhere else:
+
+    spark-bench quick "Compare these two paragraphs..." \
+                      --experiment configs/experiments/spark-ollama-baseline.yaml \
+                      --platform spark \
+                      --models qwen-3.6,phi4-14b
+
+  Want to keep the prompt for next time? Add --save and the harness
+  writes a real reusable suite YAML to
+  examples/custom-tests/quick-saved/<slug>/suite.yaml. That folder
+  is git-ignored on purpose (your scratchpad, not shipped
+  templates), but the TUI's Custom menu still picks it up because
+  it walks the same examples/custom-tests tree. You can rename it
+  with --name:
+
+    spark-bench quick "Rate this code review snippet 1-5..." \
+                      --experiment configs/experiments/spark-ollama-baseline.yaml \
+                      --platform spark \
+                      --save --name code-review-rating
+
+  In the full-screen menu (Way 1) the Quick entry walks you through
+  the same flow interactively:
+    spark-bench
+      → arrow to "Quick" → Enter
+      → tick the models
+      → type the prompt on the line you're given (single line)
+      → watch the run scroll by
+      → at the end, the harness asks "save this prompt as a
+        reusable custom suite? [y/N]" — say yes if you want it back
+        in the Custom menu next time.
+
+  Output goes to results/custom/<slug>/<run-id>/, exactly like
+  Way 4. summary.md is what you actually want to read — it has a
+  small telemetry table and one section per task showing each
+  model's reply as a fenced block.
+
+
+  Way 6 — describe what you want in a sentence
   --------------------------------------------
 
     spark-bench benchmark otestuj qwen a gemma na rychlost a spolehlivost \
@@ -255,7 +309,7 @@ Five test suites, all working today:
   Where do the results go?
 --------------------------------------------------------------------------------
 
-Canonical benchmark runs (Way 1, 2, 5) write to
+Canonical benchmark runs (Way 1, 2, 6) write to
 
     results/benchmarks/<timestamp>-<random>/
 
@@ -268,8 +322,9 @@ with one subdirectory per test suite. Inside each you get:
 
 The whole run also gets a top-level report.md with the overall ranking.
 
-Custom (Bring-Your-Own-Test) runs (Way 4) write to a separate tree so
-they cannot be confused with the canonical numbers:
+Custom (Bring-Your-Own-Test) and Quick runs (Way 4 and Way 5) write
+to a separate tree so they cannot be confused with the canonical
+numbers:
 
     results/custom/<suite-slug>/<run-id>/
         manifest.json   tagged kind: "custom"
