@@ -584,6 +584,15 @@ class TUIApp:
             curses.curs_set(0)
         except curses.error:
             pass
+        # Without this, ncurses waits up to ESCDELAY (default ~1000 ms)
+        # after a bare ESC to disambiguate it from the start of an escape
+        # sequence (arrow keys, F-keys). Users hit ESC, see nothing react,
+        # hit it again — looks like "ESC needs two presses to leave a
+        # submenu". 25 ms is what vim/htop use; safe for keypad() input.
+        try:
+            curses.set_escdelay(25)
+        except (AttributeError, curses.error):
+            pass
         stdscr.keypad(True)
         _init_colors()
         while self.running:
