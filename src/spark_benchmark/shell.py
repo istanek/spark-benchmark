@@ -67,10 +67,16 @@ SUITE_REGISTRY: dict[str, dict[str, str]] = {
         "data_path": "data/performance/sustained_throughput_v1.json",
     },
     "long_context_retrieval": {
-        "label": "Long-context retrieval (needle-in-a-haystack, 4k–131k)",
+        "label": "Long-context retrieval — full grid (needle-in-a-haystack, 4k–131k; ~1h/model)",
         "data_path": "data/long_context/long_context_retrieval_v1.json",
         # Needs public-domain corpora fetched first; see preflight below.
         "needs_haystacks": "data/long_context/haystacks",
+    },
+    "long_context_retrieval_fast": {
+        "label": "Long-context retrieval — fast preview (4k/32k/131k, fewer cells; ~10min/model)",
+        "data_path": "data/long_context/long_context_retrieval_v1.json",
+        "needs_haystacks": "data/long_context/haystacks",
+        "profile": "fast",
     },
 }
 
@@ -158,7 +164,14 @@ def load_suite_metadata(repo_root: Path, suite_name: str) -> dict[str, Any] | No
     path = repo_root / entry["data_path"]
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    meta = json.loads(path.read_text())
+    # When a registry entry pins a named profile (e.g. the fast preview),
+    # surface that profile's grid so task counts / Info reflect reality.
+    profile = entry.get("profile")
+    profiles = meta.get("profiles")
+    if profile and isinstance(profiles, dict) and profile in profiles:
+        meta = {**meta, "test_matrix": profiles[profile]}
+    return meta
 
 
 def missing_haystacks(repo_root: Path, suite_name: str) -> list[str]:
@@ -823,11 +836,17 @@ class TUIApp:
 
         suite_keys = list(SUITE_REGISTRY)
         suite_labels = [f"{k}  —  {SUITE_REGISTRY[k]['label']}" for k in suite_keys]
+        # Long-context profiles are slow and mutually redundant, so they're
+        # opt-in: everything else is preselected, the user ticks the one
+        # long-context profile they want (if any).
+        default_suites = {
+            i for i, k in enumerate(suite_keys) if not k.startswith("long_context_retrieval")
+        }
         picked_suites = _curses_multiselect(
             stdscr,
             "Select test suites to run:",
             suite_labels,
-            preselected=set(range(len(suite_keys))),
+            preselected=default_suites,
             header_lines=BANNER_LINES,
         )
         if picked_suites is None:

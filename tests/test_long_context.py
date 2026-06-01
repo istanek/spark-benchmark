@@ -4,6 +4,8 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from spark_benchmark.long_context import (
+    FAST_PROFILE,
+    FULL_PROFILE,
     HaystackSpec,
     LongContextFixture,
     Needle,
@@ -16,6 +18,8 @@ from spark_benchmark.long_context import (
     insert_needle,
     load_haystack_texts,
     load_long_context_fixture,
+    profile_for_suite_name,
+    resolve_profile_matrix,
     run_long_context_suite,
     score_niah,
     select_haystack,
@@ -547,3 +551,114 @@ def test_build_long_context_summary_counts_states() -> None:
     assert model["passes"] == 1
     # scored = total - skipped = 3; passes = 1
     assert model["pass_rate"] == round(1 / 3, 4)
+
+
+# --------------------------------------------------------------------- #
+# Profiles (full / fast grids)                                           #
+# --------------------------------------------------------------------- #
+
+
+def _fixture_with_profiles() -> LongContextFixture:
+    fx = _tiny_fixture(needles_per_cell=2)
+    fx.profiles = {
+        "fast": TestMatrix(
+            context_lengths_tokens=[4096],
+            depth_percentages=[0, 100],
+            needles_per_cell=1,
+            haystacks=["h"],
+        )
+    }
+    return fx
+
+
+def test_profile_for_suite_name() -> None:
+    assert profile_for_suite_name("long_context_retrieval") == FULL_PROFILE
+    assert profile_for_suite_name("long_context_retrieval_v1") == FULL_PROFILE
+    assert profile_for_suite_name("long_context_retrieval_fast") == FAST_PROFILE
+
+
+def test_resolve_profile_matrix_full_returns_default() -> None:
+    fx = _fixture_with_profiles()
+    assert resolve_profile_matrix(fx, FULL_PROFILE) is fx.test_matrix
+    assert resolve_profile_matrix(fx, None) is fx.test_matrix
+
+
+def test_resolve_profile_matrix_fast() -> None:
+    fx = _fixture_with_profiles()
+    fast = resolve_profile_matrix(fx, FAST_PROFILE)
+    assert fast.context_lengths_tokens == [4096]
+    assert fast.needles_per_cell == 1
+
+
+def test_resolve_profile_matrix_unknown_raises() -> None:
+    fx = _fixture_with_profiles()
+    _expect_raises(ValueError, lambda: resolve_profile_matrix(fx, "nope"))
+
+
+def test_fixture_profile_validation_rejects_insufficient_needles() -> None:
+    # 3 needles available; a profile asking for 5 per cell is invalid.
+    def _build() -> LongContextFixture:
+        fx = _tiny_fixture(needles_per_cell=2)
+        return LongContextFixture(
+            name=fx.name,
+            haystacks=fx.haystacks,
+            needles=fx.needles,
+            test_matrix=fx.test_matrix,
+            profiles={
+                "greedy": TestMatrix(
+                    context_lengths_tokens=[4096],
+                    depth_percentages=[0],
+                    needles_per_cell=5,
+                    haystacks=["h"],
+                )
+            },
+        )
+
+    _expect_raises(Exception, _build)
+
+
+def test_real_fixture_fast_profile_is_smaller_than_full() -> None:
+    fx = load_long_context_fixture(
+        fixture_path_for_suite_name(REPO_ROOT, "long_context_retrieval")
+    )
+    full = fx.test_matrix
+    fast = resolve_profile_matrix(fx, FAST_PROFILE)
+    full_cells = (
+        len(full.context_lengths_tokens) * len(full.depth_percentages) * full.needles_per_cell
+    )
+    fast_cells = (
+        len(fast.context_lengths_tokens) * len(fast.depth_percentages) * fast.needles_per_cell
+    )
+    assert fast_cells < full_cells
+    # Fast still spans the full range (keeps the 131k headline length).
+    assert max(fast.context_lengths_tokens) == max(full.context_lengths_tokens)
+
+
+def test_runner_uses_matrix_override() -> None:
+    fixture = _tiny_fixture(needles_per_cell=2)
+    override = TestMatrix(
+        context_lengths_tokens=[4096],
+        depth_percentages=[50],
+        needles_per_cell=1,
+        haystacks=["h"],
+    )
+    backend = FakeBackend(fixture.needles, answers=True)
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        summary = run_long_context_suite(
+            run_dir=Path(tmp),
+            fixture=fixture,
+            haystack_texts={"h": "lorem ipsum dolor sit amet " * 5000},
+            backend=backend,
+            backend_config=_backend_config(),
+            model_configs=[_model()],
+            sampling=SamplingConfig(max_tokens=256),
+            matrix=override,
+        )
+    # Override grid = 1 length × 1 depth × 1 needle = 1 cell, not the
+    # fixture's 2×2×2 = 8.
+    assert summary["total_rows"] == 1
+    assert summary["grid"]["context_lengths"] == [4096]
+    assert summary["grid"]["depths"] == [50]
+    assert len(backend.num_ctx_seen) == 1

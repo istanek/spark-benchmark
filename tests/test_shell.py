@@ -143,6 +143,26 @@ def test_missing_haystacks_empty_for_task_suites() -> None:
     assert missing_haystacks(ctx.repo_root, "openclaw_speed") == []
 
 
+def test_fast_profile_registered_and_metadata_uses_fast_grid() -> None:
+    ctx = load_default_context()
+    assert "long_context_retrieval_fast" in SUITE_REGISTRY
+    full = load_suite_metadata(ctx.repo_root, "long_context_retrieval")
+    fast = load_suite_metadata(ctx.repo_root, "long_context_retrieval_fast")
+    assert full is not None and fast is not None
+    # The fast entry surfaces the fast profile's (smaller) grid.
+    full_cells = (
+        len(full["test_matrix"]["context_lengths_tokens"])
+        * len(full["test_matrix"]["depth_percentages"])
+        * full["test_matrix"]["needles_per_cell"]
+    )
+    fast_cells = (
+        len(fast["test_matrix"]["context_lengths_tokens"])
+        * len(fast["test_matrix"]["depth_percentages"])
+        * fast["test_matrix"]["needles_per_cell"]
+    )
+    assert fast_cells < full_cells
+
+
 def test_discover_custom_suites_finds_examples_and_recent_runs() -> None:
     """Discovery surfaces shipped examples and recent custom-runs."""
     with tempfile.TemporaryDirectory() as tmp:

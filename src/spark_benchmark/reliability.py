@@ -43,7 +43,11 @@ def fixture_path_for_suite_name(repo_root: Path, suite_name: str) -> Path:
         return repo_root / "data" / "code" / "code_generation_v1.json"
     if suite_name in {"sustained_throughput", "sustained_throughput_v1"}:
         return repo_root / "data" / "performance" / "sustained_throughput_v1.json"
-    if suite_name in {"long_context_retrieval", "long_context_retrieval_v1"}:
+    if suite_name in {
+        "long_context_retrieval",
+        "long_context_retrieval_v1",
+        "long_context_retrieval_fast",
+    }:
         return repo_root / "data" / "long_context" / "long_context_retrieval_v1.json"
     raise ValueError(f"unsupported suite runner: {suite_name}")
 

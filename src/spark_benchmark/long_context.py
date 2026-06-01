@@ -95,25 +95,57 @@ class LongContextFixture(BaseModel):
     haystacks: dict[str, HaystackSpec]
     needles: list[Needle]
     test_matrix: TestMatrix
+    # Named alternative grids (e.g. "fast") selectable at run time. The
+    # top-level test_matrix is the default ("full") profile.
+    profiles: dict[str, TestMatrix] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate(self) -> "LongContextFixture":
         if not self.haystacks:
             raise ValueError("fixture must define at least one haystack")
-        if len(self.needles) < self.test_matrix.needles_per_cell:
-            raise ValueError(
-                f"fixture has {len(self.needles)} needles but needles_per_cell="
-                f"{self.test_matrix.needles_per_cell}; a cell could not be filled without repeats"
-            )
-        missing = [h for h in self.test_matrix.haystacks if h not in self.haystacks]
-        if missing:
-            raise ValueError(f"test_matrix references undefined haystacks: {missing}")
+        # Validate the default matrix and every named profile against the
+        # same invariants (enough needles, haystacks defined).
+        for label, matrix in [("test_matrix", self.test_matrix), *self.profiles.items()]:
+            if len(self.needles) < matrix.needles_per_cell:
+                raise ValueError(
+                    f"fixture has {len(self.needles)} needles but {label}.needles_per_cell="
+                    f"{matrix.needles_per_cell}; a cell could not be filled without repeats"
+                )
+            missing = [h for h in matrix.haystacks if h not in self.haystacks]
+            if missing:
+                raise ValueError(f"{label} references undefined haystacks: {missing}")
         return self
 
 
 def load_long_context_fixture(path: Path | str) -> LongContextFixture:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     return LongContextFixture.model_validate(payload)
+
+
+# Suite name suffix → profile. The full grid is the default; a "_fast"
+# suffix selects the lighter, range-covering preview grid.
+FULL_PROFILE = "full"
+FAST_PROFILE = "fast"
+
+
+def profile_for_suite_name(suite_name: str) -> str:
+    """Map a dispatched suite name to a fixture profile.
+
+    ``long_context_retrieval`` / ``..._v1`` → full grid;
+    ``long_context_retrieval_fast`` → the fast preview grid.
+    """
+    return FAST_PROFILE if suite_name.endswith("_fast") else FULL_PROFILE
+
+
+def resolve_profile_matrix(fixture: LongContextFixture, profile: str | None) -> TestMatrix:
+    """Return the TestMatrix for ``profile`` (default/``full`` → top-level)."""
+    if not profile or profile == FULL_PROFILE:
+        return fixture.test_matrix
+    matrix = fixture.profiles.get(profile)
+    if matrix is None:
+        known = ", ".join(sorted([FULL_PROFILE, *fixture.profiles])) or FULL_PROFILE
+        raise ValueError(f"unknown long-context profile {profile!r}; known: {known}")
+    return matrix
 
 
 def _stable_hash(*parts: Any) -> int:
@@ -267,15 +299,17 @@ def run_long_context_suite(
     sampling: SamplingConfig,
     progress_callback: Callable[[str], None] | None = None,
     chars_per_token: float = DEFAULT_CHARS_PER_TOKEN,
+    matrix: TestMatrix | None = None,
 ) -> dict[str, Any]:
     """Run single-needle NIAH across the fixture grid for each model.
 
     Each (length, depth, repetition) cell yields one of three states:
     ``pass``/``fail`` (ran and scored), ``skipped_unsupported`` (length
     exceeds the model's claimed context), or ``error`` (backend raised,
-    e.g. OOM — captured, never fatal).
+    e.g. OOM — captured, never fatal). Pass ``matrix`` to override the
+    fixture's default grid (used by the "fast" profile).
     """
-    matrix = fixture.test_matrix
+    matrix = matrix or fixture.test_matrix
 
     # Long prefills need headroom over the default request timeout.
     if hasattr(backend, "timeout_s"):
@@ -394,7 +428,7 @@ def run_long_context_suite(
             progress_callback(f"  unloading {model_config.name}")
         backend.unload()
 
-    summary = build_long_context_summary(run_rows, fixture, backend_config)
+    summary = build_long_context_summary(run_rows, fixture, backend_config, matrix=matrix)
     write_json(run_dir / "summary.json", summary)
     write_long_context_summary_markdown(run_dir, summary)
     return summary
@@ -423,8 +457,9 @@ def build_long_context_summary(
     backend: BackendConfig,
     *,
     failure_threshold: float = DEFAULT_FAILURE_THRESHOLD,
+    matrix: TestMatrix | None = None,
 ) -> dict[str, Any]:
-    matrix = fixture.test_matrix
+    matrix = matrix or fixture.test_matrix
     per_model: dict[str, dict[str, Any]] = {}
 
     for row in run_rows:

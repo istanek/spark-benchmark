@@ -359,10 +359,16 @@ def run(
         return
     if run_suite:
         backend = build_backend(backend_config)
-        if run_suite in {"long_context_retrieval", "long_context_retrieval_v1"}:
+        if run_suite in {
+            "long_context_retrieval",
+            "long_context_retrieval_v1",
+            "long_context_retrieval_fast",
+        }:
             from spark_benchmark.long_context import (
                 load_haystack_texts,
                 load_long_context_fixture,
+                profile_for_suite_name,
+                resolve_profile_matrix,
                 run_long_context_suite,
             )
 
@@ -370,6 +376,7 @@ def run(
                 repo_root / "data" / "long_context" / "long_context_retrieval_v1.json"
             )
             haystack_texts = load_haystack_texts(fixture, repo_root)
+            matrix = resolve_profile_matrix(fixture, profile_for_suite_name(run_suite))
             summary = run_long_context_suite(
                 run_dir=run_dir,
                 fixture=fixture,
@@ -378,6 +385,7 @@ def run(
                 backend_config=backend_config,
                 model_configs=model_configs,
                 sampling=experiment_spec.sampling,
+                matrix=matrix,
             )
             print(json.dumps(summary, ensure_ascii=False, indent=2))
             return

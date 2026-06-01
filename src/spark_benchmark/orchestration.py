@@ -18,6 +18,8 @@ from spark_benchmark.sustained_throughput import (
 from spark_benchmark.long_context import (
     load_haystack_texts,
     load_long_context_fixture,
+    profile_for_suite_name,
+    resolve_profile_matrix,
     run_long_context_suite,
 )
 from spark_benchmark.models import BackendConfig, GenerationResult, ModelConfig, SamplingConfig
@@ -243,11 +245,16 @@ def run_benchmark_bundle(
                 sampling=experiment.sampling,
                 progress_callback=progress_callback,
             )
-        elif suite_name in {"long_context_retrieval", "long_context_retrieval_v1"}:
+        elif suite_name in {
+            "long_context_retrieval",
+            "long_context_retrieval_v1",
+            "long_context_retrieval_fast",
+        }:
             fixture = load_long_context_fixture(
                 repo_root / "data" / "long_context" / "long_context_retrieval_v1.json"
             )
             haystack_texts = load_haystack_texts(fixture, repo_root)
+            matrix = resolve_profile_matrix(fixture, profile_for_suite_name(suite_name))
             summary = run_long_context_suite(
                 run_dir=suite_dir,
                 fixture=fixture,
@@ -257,6 +264,7 @@ def run_benchmark_bundle(
                 model_configs=model_configs,
                 sampling=experiment.sampling,
                 progress_callback=progress_callback,
+                matrix=matrix,
             )
         else:
             raise ValueError(f"Unsupported suite: {suite_name}")

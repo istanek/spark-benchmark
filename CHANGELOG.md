@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-01
+
+### Added
+
+- **Fast / full profiles for the long-context suite.** The full
+  needle-in-a-haystack grid is 4×4×8 = 128 cells per model and, dominated
+  by long-context prefill (the 131k row alone is ~half the time), runs
+  roughly an hour per model. There's now a **fast preview profile**
+  (3 lengths `4096 / 32768 / 131072` × 3 depths `0/50/100` × 2 needles =
+  18 cells, ~10 min/model) that still spans the full range up to 131k. It
+  shows up in the TUI suite picker as a separate
+  `long_context_retrieval_fast` entry and works on the CLI via
+  `run --suite long_context_retrieval_fast`. Profiles live under a new
+  `profiles` block in the fixture and are validated like the default grid;
+  `LongContextFixture` gained `profiles`, plus `resolve_profile_matrix` /
+  `profile_for_suite_name` helpers and a `matrix` override on the runner.
+
+### Changed
+
+- **Long-context suites are now opt-in in the TUI "Run" picker.** Because
+  they're slow and the two profiles are mutually redundant, neither
+  long-context entry is preselected by default — the five quick canonical
+  suites stay checked and you tick the one long-context profile you want.
+  The `Suites`/`Info` screens report the fast entry's actual (smaller)
+  grid.
+
 ## [0.4.0] - 2026-06-01
 
 ### Added

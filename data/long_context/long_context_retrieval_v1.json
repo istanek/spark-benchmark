@@ -98,5 +98,13 @@
     "depth_percentages": [0, 33, 66, 100],
     "needles_per_cell": 8,
     "haystacks": ["literary_melville", "scientific_darwin"]
+  },
+  "profiles": {
+    "fast": {
+      "context_lengths_tokens": [4096, 32768, 131072],
+      "depth_percentages": [0, 50, 100],
+      "needles_per_cell": 2,
+      "haystacks": ["literary_melville", "scientific_darwin"]
+    }
   }
 }
