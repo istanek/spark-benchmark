@@ -7,8 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-01
+
 ### Added
 
+- **Long-context retrieval in the interactive TUI + HTML reports (layer 3).**
+  `long_context_retrieval` now shows up in the `spark-bench shell` suite
+  picker and `Suites`/`Info` screens (grid-aware task counts:
+  lengths × depths × needles/cell). A preflight checks the git-ignored
+  Project Gutenberg corpora are present and cleanly skips the suite with a
+  "run scripts/fetch_haystacks.sh" hint instead of crashing mid-run. The
+  HTML report gains a dedicated long-context card: a per-model
+  length×depth **pass-rate heatmap** (red→amber→green, N/A tiles for
+  lengths a model can't load) via a new dependency-free `_svg_heatmap`
+  helper, a **prefill-throughput-vs-length** line chart, and a
+  **resident-memory-vs-length** chart (shown only when Ollama `/api/ps`
+  yielded memory), plus a first-failure-length KPI strip. The aggregator
+  forwards the per-cell grid through `aggregate_runs`.
 - **`long_context_retrieval` runner (layer 2 of the v0.4.0 suite).**
   Single-needle NIAH execution across the fixture grid. For each model it
   iterates the `length × depth × needles_per_cell` matrix and writes one
@@ -40,6 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   aspirational Suite 1 sketch in `docs/extensions-spec.md`. Also records
   the agreed release ladder: v0.4.0 long-context → v0.5.0
   quantization sweep → v0.6.0 concurrent serving.
+
+### Fixed
+
+- **TUI: Esc now cleanly exits a selection back to the menu.** Pressing
+  Esc/`q` in the model or suite multiselect (Run / Custom / Quick) was
+  conflated with confirming an empty selection, so it printed a stray
+  "(no models selected)" notice that looked like a dead-end sub-screen.
+  Esc-cancel (`None`) is now distinguished from an empty confirm and
+  returns silently to the main menu.
 
 ## [0.3.0] - 2026-06-01
 

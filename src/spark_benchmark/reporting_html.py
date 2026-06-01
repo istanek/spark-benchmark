@@ -56,6 +56,7 @@ _CANONICAL_SUITES = (
     "practical_structured_output",
     "code_generation",
     "sustained_throughput",
+    "long_context_retrieval",
 )
 
 
@@ -553,6 +554,72 @@ def _cell_pct_html(value: float | None) -> str:
         f'<td class="cell-pct" data-band="{band}" '
         f'style="--cell-pct: {pct:.1f}%;">{_fmt_pct(value)}</td>'
     )
+
+
+def _svg_heatmap(
+    row_labels: list[str],
+    col_labels: list[str],
+    values: dict[tuple[str, str], float | None],
+    *,
+    cell_w: int = 62,
+    cell_h: int = 34,
+) -> str:
+    """Render a pass-rate heatmap (rows × cols) as scalable inline SVG.
+
+    ``values`` is keyed by ``(row_label, col_label)`` and holds a 0..1
+    pass-rate, or ``None`` for cells that didn't run (e.g. a context
+    length the model can't load — rendered as a dimmed N/A tile). Colour
+    runs red → amber → green via :func:`_gradient_color_for_ratio`.
+    """
+    if not row_labels or not col_labels:
+        return ""
+    left_pad = 92
+    top_pad = 24
+    pad = 6
+    width = left_pad + len(col_labels) * cell_w + pad
+    height = top_pad + len(row_labels) * cell_h + pad
+    parts = [
+        f'<svg class="heatmap" viewBox="0 0 {width} {height}" '
+        f'style="width:100%;height:auto;display:block;max-width:{width}px;" '
+        f'role="img" preserveAspectRatio="xMinYMin meet">'
+    ]
+    # Column (depth) headers.
+    for ci, col in enumerate(col_labels):
+        cx = left_pad + ci * cell_w + cell_w / 2
+        parts.append(
+            f'<text x="{cx:.1f}" y="{top_pad - 9}" text-anchor="middle" '
+            f'font-size="11" fill="var(--fg-muted)" font-weight="600">{_esc(col)}</text>'
+        )
+    # Rows.
+    for ri, row in enumerate(row_labels):
+        ry = top_pad + ri * cell_h
+        parts.append(
+            f'<text x="{left_pad - 8}" y="{ry + cell_h / 2 + 4:.1f}" text-anchor="end" '
+            f'font-size="11" fill="var(--fg-muted)" font-family="ui-monospace,monospace">{_esc(row)}</text>'
+        )
+        for ci, col in enumerate(col_labels):
+            cx = left_pad + ci * cell_w
+            value = values.get((row, col))
+            if value is None:
+                fill = "var(--surface-2, #1f2733)"
+                label = "N/A"
+                text_fill = "var(--fg-muted)"
+            else:
+                fill = _gradient_color_for_ratio(float(value))
+                label = _fmt_pct(value)
+                text_fill = "#ffffff"
+            parts.append(
+                f'<rect x="{cx + 2:.1f}" y="{ry + 2:.1f}" width="{cell_w - 4}" '
+                f'height="{cell_h - 4}" rx="5" fill="{fill}" '
+                f'stroke="rgba(0,0,0,0.25)" stroke-width="1"></rect>'
+            )
+            parts.append(
+                f'<text x="{cx + cell_w / 2:.1f}" y="{ry + cell_h / 2 + 4:.1f}" '
+                f'text-anchor="middle" font-size="11" font-weight="600" '
+                f'fill="{text_fill}">{_esc(label)}</text>'
+            )
+    parts.append("</svg>")
+    return "".join(parts)
 
 
 # --------------------------------------------------------------------- #
@@ -1310,6 +1377,10 @@ def _suite_titles_and_subtitles() -> dict[str, tuple[str, str]]:
             "Sustained throughput / thermal soak",
             "How well each model holds throughput as it gets pushed to thermal limits.",
         ),
+        "long_context_retrieval": (
+            "Long-context retrieval (needle-in-a-haystack)",
+            "Can each model still find a planted fact as the context grows from 4k to 131k tokens?",
+        ),
     }
 
 
@@ -1352,6 +1423,8 @@ def _render_suite_block_html(suite: dict[str, Any]) -> str:
         parts.append(_render_suite_code_generation(models))
     elif canonical == "sustained_throughput":
         parts.append(_render_suite_sustained_throughput(models))
+    elif canonical == "long_context_retrieval":
+        parts.append(_render_suite_long_context(models))
     else:
         parts.append(_render_suite_generic(models))
 
@@ -1671,6 +1744,108 @@ def _render_suite_sustained_throughput(models: list[dict[str, Any]]) -> str:
             '<div class="suite-wide card"><h3>Throughput over time</h3>'
             f"{line_html}"
             "</div>"
+        )
+    return out
+
+
+def _render_suite_long_context(models: list[dict[str, Any]]) -> str:
+    """Long-context NIAH: per-model length×depth heatmap + prefill/memory curves.
+
+    Heatmaps show retrieval pass-rate by context length (rows) and needle
+    depth (columns); N/A tiles mark lengths a model can't load. Below: a
+    prefill-throughput-vs-length line chart and (only when Ollama
+    ``/api/ps`` yielded memory) a resident-memory-vs-length chart.
+    """
+
+    def _val(model: dict[str, Any], key: str) -> Any:
+        return model.get(key) if model.get(key) is not None else (model.get("extra", {}) or {}).get(key)
+
+    # KPI strip — first-failure length per model.
+    kpis: list[str] = []
+    for model in models:
+        ffl = _val(model, "first_failure_length")
+        name = str(model.get("model") or "?")
+        if ffl:
+            value = f"{int(ffl):,}"
+            sub = "first-failure length (tokens)"
+        else:
+            value = "✓ all"
+            sub = "held across the grid"
+        kpis.append(
+            '<div style="flex:1 1 150px;min-width:140px;text-align:center;">'
+            '<div style="font-size:12px;color:var(--fg-muted);font-weight:600;'
+            'text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">'
+            f"<code>{_esc(name)}</code></div>"
+            f'<div style="font-size:22px;font-weight:700;">{_esc(value)}</div>'
+            f'<div style="font-size:11px;color:var(--fg-muted);">{_esc(sub)}</div>'
+            "</div>"
+        )
+
+    panels: list[str] = []
+    if kpis:
+        panels.append(
+            '<div class="panel"><h4>Where retrieval breaks down</h4>'
+            f'<div style="display:flex;flex-wrap:wrap;gap:14px;">{"".join(kpis)}</div>'
+            "</div>"
+        )
+
+    # One heatmap per model.
+    for model in models:
+        cells = _val(model, "cells") or []
+        if not cells:
+            continue
+        lengths = sorted({int(c["context_length"]) for c in cells}, reverse=True)
+        depths = sorted({int(c["depth_pct"]) for c in cells})
+        row_labels = [f"{length:,}" for length in lengths]
+        col_labels = [f"{depth}%" for depth in depths]
+        values: dict[tuple[str, str], float | None] = {}
+        for c in cells:
+            rl = f"{int(c['context_length']):,}"
+            cl = f"{int(c['depth_pct'])}%"
+            values[(rl, cl)] = c.get("pass_rate")
+        heatmap = _svg_heatmap(row_labels, col_labels, values)
+        if heatmap:
+            panels.append(
+                '<div class="panel"><h4>Retrieval pass-rate · '
+                f"<code>{_esc(str(model.get('model') or '?'))}</code></h4>"
+                '<p class="meta">rows = context length (tokens) · columns = needle depth</p>'
+                f"{heatmap}</div>"
+            )
+
+    # Prefill throughput / memory growth vs context length (across depths).
+    prefill_series: list[tuple[str, list[tuple[float, float]]]] = []
+    memory_series: list[tuple[str, list[tuple[float, float]]]] = []
+    for model in models:
+        cells = _val(model, "cells") or []
+        by_len_tps: dict[int, list[float]] = {}
+        by_len_vram: dict[int, list[float]] = {}
+        for c in cells:
+            length = int(c["context_length"])
+            if c.get("avg_prefill_tps") is not None:
+                by_len_tps.setdefault(length, []).append(float(c["avg_prefill_tps"]))
+            if c.get("peak_vram_mb") is not None:
+                by_len_vram.setdefault(length, []).append(float(c["peak_vram_mb"]))
+        name = str(model.get("model") or "?")
+        if by_len_tps:
+            pts = [(float(length), sum(v) / len(v)) for length, v in sorted(by_len_tps.items())]
+            prefill_series.append((f"{name} prefill", pts))
+        if by_len_vram:
+            vram_pts = [(float(length), max(v)) for length, v in sorted(by_len_vram.items())]
+            memory_series.append((f"{name} VRAM", vram_pts))
+
+    out = '<div class="suite-grid">' + "".join(panels) + "</div>"
+    prefill_html = _svg_line_chart(prefill_series, height=160, x_label=" tok", y_label="tok/s")
+    if prefill_html:
+        out += (
+            '<div class="suite-wide card"><h3>Prefill throughput vs context length</h3>'
+            f"{prefill_html}</div>"
+        )
+    memory_html = _svg_line_chart(memory_series, height=160, x_label=" tok", y_label="MB")
+    if memory_html:
+        out += (
+            '<div class="suite-wide card"><h3>Resident memory vs context length '
+            '<span class="badge">Ollama /api/ps</span></h3>'
+            f"{memory_html}</div>"
         )
     return out
 

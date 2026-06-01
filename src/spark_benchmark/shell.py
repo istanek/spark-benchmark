@@ -66,6 +66,12 @@ SUITE_REGISTRY: dict[str, dict[str, str]] = {
         "label": "Sustained throughput (5-min thermal / decode soak)",
         "data_path": "data/performance/sustained_throughput_v1.json",
     },
+    "long_context_retrieval": {
+        "label": "Long-context retrieval (needle-in-a-haystack, 4k–131k)",
+        "data_path": "data/long_context/long_context_retrieval_v1.json",
+        # Needs public-domain corpora fetched first; see preflight below.
+        "needs_haystacks": "data/long_context/haystacks",
+    },
 }
 
 MENU_ITEMS: list[tuple[str, str]] = [
@@ -153,6 +159,42 @@ def load_suite_metadata(repo_root: Path, suite_name: str) -> dict[str, Any] | No
     if not path.exists():
         return None
     return json.loads(path.read_text())
+
+
+def missing_haystacks(repo_root: Path, suite_name: str) -> list[str]:
+    """Repo-relative haystack texts a suite needs but that aren't fetched yet.
+
+    Empty for suites that don't declare ``needs_haystacks``. The
+    long_context suite deliberately git-ignores its (large) corpora, so a
+    fresh checkout must run ``scripts/fetch_haystacks.sh`` first.
+    """
+    entry = SUITE_REGISTRY.get(suite_name) or {}
+    if "needs_haystacks" not in entry:
+        return []
+    meta = load_suite_metadata(repo_root, suite_name)
+    if not meta:
+        return []
+    missing: list[str] = []
+    for spec in (meta.get("haystacks") or {}).values():
+        text_file = spec.get("text_file")
+        if text_file and not (repo_root / text_file).exists():
+            missing.append(text_file)
+    return missing
+
+
+def _suite_task_count(meta: dict[str, Any]) -> int:
+    """Tasks-per-model for a suite's fixture.
+
+    Task-list suites report ``len(tasks)``; the grid-based
+    ``long_context_retrieval`` reports ``lengths × depths × needles_per_cell``.
+    """
+    matrix = meta.get("test_matrix")
+    if isinstance(matrix, dict):
+        lengths = matrix.get("context_lengths_tokens") or []
+        depths = matrix.get("depth_percentages") or []
+        per_cell = matrix.get("needles_per_cell") or 0
+        return len(lengths) * len(depths) * int(per_cell)
+    return len(meta.get("tasks") or [])
 
 
 @dataclass
@@ -689,9 +731,9 @@ class TUIApp:
         self.log("── Suites ──")
         for name, entry in SUITE_REGISTRY.items():
             meta = load_suite_metadata(self.ctx.repo_root, name)
-            task_count = "?" if meta is None else str(len(meta.get("tasks") or []))
+            task_count = "?" if meta is None else str(_suite_task_count(meta))
             description = (meta.get("description") if meta else "") or entry["label"]
-            self.log(f"  {name:<32} tasks={task_count:>3}  {description}")
+            self.log(f"  {name:<32} tasks={task_count:>4}  {description}")
 
     def show_info(self, stdscr: Any) -> None:
         suite_keys = list(SUITE_REGISTRY)
@@ -714,6 +756,15 @@ class TUIApp:
         self.log(f"  Description: {meta.get('description', '')}")
         for note in (meta.get("notes") or []):
             self.log(f"    • {note}")
+        matrix = meta.get("test_matrix")
+        if isinstance(matrix, dict):
+            self.log(
+                f"  Grid:        {matrix.get('context_lengths_tokens')} × depths "
+                f"{matrix.get('depth_percentages')} × {matrix.get('needles_per_cell')} needles/cell"
+            )
+            self.log(f"  Needles:     {len(meta.get('needles') or [])}")
+            self.log(f"  Tasks/model: {_suite_task_count(meta)}")
+            return
         tasks = meta.get("tasks") or []
         self.log(f"  Tasks: {len(tasks)}")
         for task in tasks[:3]:
@@ -756,6 +807,8 @@ class TUIApp:
             disabled=disabled,
             header_lines=BANNER_LINES,
         )
+        if picked_models is None:
+            return  # Esc/q — clean cancel back to the menu, no notice
         if not picked_models:
             self.log_blank()
             self.log("(no models selected)")
@@ -777,11 +830,32 @@ class TUIApp:
             preselected=set(range(len(suite_keys))),
             header_lines=BANNER_LINES,
         )
+        if picked_suites is None:
+            return  # Esc/q — clean cancel back to the menu, no notice
         if not picked_suites:
             self.log_blank()
             self.log("(no suites selected)")
             return
         selected_suites = [suite_keys[i] for i in picked_suites]
+
+        # Preflight: drop suites whose corpora aren't fetched yet rather than
+        # crashing mid-run with a FileNotFoundError.
+        runnable_suites: list[str] = []
+        for suite_name in selected_suites:
+            missing = missing_haystacks(self.ctx.repo_root, suite_name)
+            if missing:
+                self.log_blank()
+                self.log(f"⚠ Skipping '{suite_name}': missing haystack corpora.")
+                self.log("  Run scripts/fetch_haystacks.sh once, then re-run.")
+                for text_file in missing:
+                    self.log(f"    missing: {text_file}")
+                continue
+            runnable_suites.append(suite_name)
+        if not runnable_suites:
+            self.log_blank()
+            self.log("(no runnable suites — nothing to do)")
+            return
+        selected_suites = runnable_suites
 
         self.log_blank()
         self.log("=== Benchmark run ===")
@@ -917,6 +991,8 @@ class TUIApp:
             disabled=disabled,
             header_lines=BANNER_LINES,
         )
+        if picked is None:
+            return  # Esc/q — clean cancel back to the menu, no notice
         if not picked:
             self.log_blank()
             self.log("(no models selected)")
@@ -1068,6 +1144,8 @@ class TUIApp:
             disabled=disabled,
             header_lines=BANNER_LINES,
         )
+        if picked is None:
+            return  # Esc/q — clean cancel back to the menu, no notice
         if not picked:
             self.log_blank()
             self.log("── Quick (ad-hoc prompt) ──")

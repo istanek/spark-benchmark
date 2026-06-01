@@ -14,6 +14,7 @@ from spark_benchmark.shell import (
     is_vision_model,
     load_default_context,
     load_suite_metadata,
+    missing_haystacks,
 )
 
 
@@ -107,13 +108,39 @@ def test_load_suite_metadata_returns_expected_fields() -> None:
         assert meta is not None, f"suite metadata missing for {name}"
         assert meta.get("name")
         assert meta.get("description")
-        assert isinstance(meta.get("tasks"), list)
-        assert len(meta["tasks"]) > 0
+        # Task-list suites carry a non-empty ``tasks`` array; grid-based
+        # suites (long_context_retrieval) carry a ``test_matrix`` instead.
+        if meta.get("test_matrix"):
+            assert meta["test_matrix"].get("context_lengths_tokens")
+        else:
+            assert isinstance(meta.get("tasks"), list)
+            assert len(meta["tasks"]) > 0
 
 
 def test_load_suite_metadata_unknown_suite_returns_none() -> None:
     ctx = load_default_context()
     assert load_suite_metadata(ctx.repo_root, "no_such_suite") is None
+
+
+def test_missing_haystacks_flags_unfetched_corpora() -> None:
+    ctx = load_default_context()
+    # The corpora are git-ignored and not present in a fresh checkout, so
+    # the long-context suite should report them as missing (unless a dev
+    # has fetched them locally — then the list is simply empty).
+    missing = missing_haystacks(ctx.repo_root, "long_context_retrieval")
+    haystack_dir = ctx.repo_root / "data" / "long_context" / "haystacks"
+    fetched = list(haystack_dir.glob("*.txt")) if haystack_dir.exists() else []
+    if fetched:
+        assert missing == []
+    else:
+        assert missing  # at least one text_file flagged
+        assert all(path.endswith(".txt") for path in missing)
+
+
+def test_missing_haystacks_empty_for_task_suites() -> None:
+    ctx = load_default_context()
+    # Suites without a needs_haystacks marker never require a fetch.
+    assert missing_haystacks(ctx.repo_root, "openclaw_speed") == []
 
 
 def test_discover_custom_suites_finds_examples_and_recent_runs() -> None:

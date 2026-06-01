@@ -163,6 +163,14 @@ def aggregate_runs(runs_root: Path) -> dict[str, Any]:
                 # (pass/fail strips, sandbox-failure breakdown). Optional
                 # — falls back gracefully when the file is absent.
                 "run_dir",
+                # Long-context (needle-in-a-haystack) per-model fields. The
+                # HTML renderer turns `cells` into a length×depth heatmap plus
+                # prefill-throughput and memory-growth charts; the scalar
+                # `first_failure_length` headlines where retrieval breaks down.
+                "cells",
+                "first_failure_length",
+                "skipped",
+                "errors",
             ):
                 if key == "run_dir":
                     model_bucket["extra"]["run_dir"] = str(run_dir)
@@ -369,6 +377,8 @@ def render_cli_benchmark_summary(
         "code_generation_v1": "Code generation (HumanEval)",
         "sustained_throughput": "Sustained throughput (thermal / decode soak)",
         "sustained_throughput_v1": "Sustained throughput (thermal / decode soak)",
+        "long_context_retrieval": "Long-context retrieval (needle-in-a-haystack)",
+        "long_context_retrieval_v1": "Long-context retrieval (needle-in-a-haystack)",
     }
     suite_map = {
         "openclaw_speed": _find_suite(aggregate, "openclaw_speed"),
@@ -376,6 +386,7 @@ def render_cli_benchmark_summary(
         "practical_structured_output": _find_suite(aggregate, "practical_structured_output"),
         "code_generation": _find_suite(aggregate, "code_generation"),
         "sustained_throughput": _find_suite(aggregate, "sustained_throughput"),
+        "long_context_retrieval": _find_suite(aggregate, "long_context_retrieval"),
     }
     lines = [
         "BENCHMARK SUMMARY",
@@ -533,6 +544,21 @@ def _suite_commentary(suite_name: str, suite: dict[str, Any]) -> str:
             )
         if peak_temp is not None:
             bits.append(f"Peak GPU temp observed: {peak_temp:.0f} °C.")
+        return " ".join(bits)
+
+    if suite_name in ("long_context_retrieval", "long_context_retrieval_v1"):
+        bits = [
+            f"{best['model']} retrieved best overall at {best_rate:.0f}% across the grid."
+        ]
+        breakers = [m for m in models if m.get("first_failure_length")]
+        if breakers:
+            soonest = min(breakers, key=lambda m: m["first_failure_length"])
+            bits.append(
+                f"Retrieval first breaks down for {soonest['model']} at "
+                f"{soonest['first_failure_length']} tokens."
+            )
+        else:
+            bits.append("No model dropped below the failure threshold at any tested length.")
         return " ".join(bits)
 
     return ""

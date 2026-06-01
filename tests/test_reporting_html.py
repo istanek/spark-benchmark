@@ -38,9 +38,11 @@ from spark_benchmark.reporting_html import (
     _load_telemetry_samples,
     _pass_fail_strip_html,
     _per_task_pass_fail,
+    _render_suite_long_context,
     _svg_bars,
     _svg_dual_bars,
     _svg_gauge,
+    _svg_heatmap,
     _svg_line_chart,
     _svg_stacked_bars,
     _svg_thermometer,
@@ -749,6 +751,93 @@ def test_canonical_renderer_loads_per_task_pass_fail_from_run_dir() -> None:
         assert 'class="cell fail"' in html
         # Hint text mentions "green = pass, red = fail".
         assert "green = pass" in html
+
+
+# --------------------------------------------------------------------- #
+# Long-context retrieval (needle-in-a-haystack) suite                    #
+# --------------------------------------------------------------------- #
+
+
+def _long_context_models() -> list[dict]:
+    return [
+        {
+            "model": "qwen-3.6",
+            "passes": 5,
+            "total": 8,
+            "pass_rate": 0.625,
+            "runs": 1,
+            "avg_ttft_ms": None,
+            "avg_tokens_per_s": None,
+            "first_failure_length": 16384,
+            "skipped": 2,
+            "errors": 0,
+            "cells": [
+                {"context_length": 4096, "depth_pct": 0, "pass_rate": 1.0, "avg_prefill_tps": 820.0, "peak_vram_mb": 4096.0},
+                {"context_length": 4096, "depth_pct": 100, "pass_rate": 1.0, "avg_prefill_tps": 810.0, "peak_vram_mb": 4096.0},
+                {"context_length": 16384, "depth_pct": 0, "pass_rate": 0.5, "avg_prefill_tps": 600.0, "peak_vram_mb": 6100.0},
+                {"context_length": 16384, "depth_pct": 100, "pass_rate": 0.0, "avg_prefill_tps": 590.0, "peak_vram_mb": 6100.0},
+                {"context_length": 131072, "depth_pct": 0, "pass_rate": None, "avg_prefill_tps": None, "peak_vram_mb": None},
+                {"context_length": 131072, "depth_pct": 100, "pass_rate": None, "avg_prefill_tps": None, "peak_vram_mb": None},
+            ],
+        }
+    ]
+
+
+def test_svg_heatmap_renders_values_and_na() -> None:
+    svg = _svg_heatmap(
+        ["131,072", "4,096"],
+        ["0%", "100%"],
+        {
+            ("131,072", "0%"): None,
+            ("131,072", "100%"): 0.0,
+            ("4,096", "0%"): 1.0,
+            ("4,096", "100%"): 0.95,
+        },
+    )
+    assert svg.startswith("<svg")
+    assert "viewBox" in svg
+    assert "N/A" in svg  # the None cell
+    assert "100%" in svg and "0%" in svg
+    # green for the perfect cell, red for the zero cell.
+    assert _gradient_color_for_ratio(1.0) in svg
+    assert _gradient_color_for_ratio(0.0) in svg
+
+
+def test_svg_heatmap_empty_returns_blank() -> None:
+    assert _svg_heatmap([], ["0%"], {}) == ""
+    assert _svg_heatmap(["4096"], [], {}) == ""
+
+
+def test_render_suite_long_context_has_heatmap_kpi_and_charts() -> None:
+    block = _render_suite_long_context(_long_context_models())
+    assert 'class="heatmap"' in block
+    assert "first-failure length" in block  # KPI strip
+    assert "16,384" in block  # the first-failure value, comma-formatted
+    assert "Prefill throughput vs context length" in block
+    assert "Resident memory vs context length" in block
+
+
+def test_render_suite_long_context_without_memory_hides_memory_chart() -> None:
+    models = _long_context_models()
+    for cell in models[0]["cells"]:
+        cell["peak_vram_mb"] = None
+    block = _render_suite_long_context(models)
+    assert "Prefill throughput vs context length" in block
+    assert "Resident memory vs context length" not in block
+
+
+def test_canonical_report_includes_long_context_card() -> None:
+    aggregate = {
+        "runs_root": "/tmp/results/benchmarks/run-lc",
+        "total_runs": 1,
+        "suites": [{"suite": "long_context_retrieval_v1", "models": _long_context_models()}],
+        "runs": [],
+    }
+    html = render_canonical_report_html(aggregate)
+    # Suite title + versioned badge + the dedicated heatmap renderer fired.
+    assert "Long-context retrieval" in html
+    assert "long_context_retrieval_v1" in html
+    assert 'class="heatmap"' in html
 
 
 def _run_all() -> int:
