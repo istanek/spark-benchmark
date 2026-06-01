@@ -180,6 +180,110 @@ headline result, not a missing data point.
 
 ---
 
+## Empirical findings from the Spark probe (2026-06-01)
+
+Before writing the runner, `scripts/probe_long_context.py` was run
+against the live Ollama on the Spark (9 models). These findings are
+decision-grade and shape layer 2:
+
+### Tokenization — `prompt_eval_count` is reliable ground truth
+
+Every generative model returns a stable, monotonic `prompt_eval_count`.
+Chars-per-token settles around **6.7–7.2** but *varies by model* and
+*rises with prompt length* (fixed chat-template overhead dominates short
+prompts):
+
+| Model | chars/token (asymptotic) |
+| --- | --- |
+| gpt-oss:120b | ~7.2 |
+| gemma4:31b | ~7.26 |
+| qwen3.6:35b | ~7.26 |
+| nemotron3:33b | ~6.87 |
+| qwen3-vl:30b | ~7.26 |
+| supergemma-26b | ~7.26 |
+
+→ **Strategy:** don't ship tokenizer files and don't trust a fixed
+ratio. Estimate char length from the model's asymptotic ratio, send,
+read the actual `prompt_eval_count`, and do **1–2 correction iterations**
+to land on the target token count. `prompt_eval_count` is the oracle.
+
+### `num_ctx` must be set explicitly
+
+Ollama's adapter does **not** currently set `options.num_ctx`
+(`src/spark_benchmark/runners/ollama.py`). On this Ollama the default
+window auto-sized fine up to 65k (a ~65 536-token prompt loaded 63 871
+uncapped), so it is not catastrophic today — but it is version- and
+config-dependent. **Layer 2 must set `options.num_ctx` per request** to
+guarantee the full context loads across Ollama versions.
+
+### Prefill caching collapses repeat timings — needs a per-rep nonce
+
+Re-sending an identical prompt makes prefill time crater (cache hit):
+
+| Model | prefill #1 | prefill #2 (identical prompt) |
+| --- | --- | --- |
+| gpt-oss:120b | 2.51 s | 0.025 s |
+| gemma4:31b | 5.52 s | 0.10 s |
+| qwen3-vl:30b | 1.58 s | 0.016 s |
+| supergemma-26b | 1.49 s | 0.02 s |
+| qwen3.6:35b | 2.60 s | 0.94 s |
+| nemotron3:33b | 1.61 s | 0.57 s |
+
+→ **Strategy:** every `(length, depth, repetition)` prompt must be
+**unique**. Needle text + depth already vary across cells, but repeats of
+the same cell would collide. Inject a short unique nonce (e.g. a random
+token sentence) per repetition so prefill/TTFT telemetry is honest.
+
+### Filter models: skip embedding + broken-template models
+
+- `nomic-embed-text`, `bge-m3` → HTTP 400 `"does not support generate"`
+  (embedding models).
+- `pixtral-12b` → HTTP 500 broken chat template (`.System` field).
+
+→ **Strategy:** filter with the existing
+`model_registry.is_embedding_model` / `is_vision_model`, and wrap each
+`generate` so a model-level failure marks that model skipped rather than
+crashing the suite. The per-model context-limit skip already works
+(bge-m3 at 8192 correctly skipped 16384).
+
+### Runtime + timeout — 300 s is too tight at 131k for slow models
+
+Prefill throughput at 16k–65k extrapolated to 131k:
+
+| Model | prefill tok/s | est. 131k prefill |
+| --- | --- | --- |
+| nemotron3:33b | ~2250–2480 | ~58 s |
+| supergemma-26b | ~2500 | ~53 s |
+| qwen3-vl:30b | ~2225 | ~59 s |
+| qwen3.6:35b | ~1494 | ~88 s |
+| gpt-oss:120b | ~1576 | ~83 s |
+| **gemma4:31b** | **~640** | **~205 s** |
+
+→ **Strategy:** `DEFAULT_TIMEOUT_S = 300` in the Ollama adapter is
+borderline for gemma-class models at 131k. Long-context runs should use
+a **≥ 600 s** per-request timeout. (65k measured: nemotron 26.1 s
+prefill, wall 34 s — comfortable.)
+
+### Memory telemetry — `nvidia-smi` does NOT report memory on Spark
+
+The biggest finding for the memory story: on the Spark,
+`nvidia-smi --query-gpu=memory.used,memory.total` returns **`[N/A]`**
+(unified LPDDR5X memory is not exposed the way discrete-GPU VRAM is).
+Temperature (74 °C) and power (75 W) *do* work.
+
+→ **Consequence:** the "peak memory vs. context length" chart — a
+centerpiece of the Spark 128 GB story — **cannot** use the obvious
+`nvidia-smi` memory query. Layer 2/3 must source memory elsewhere:
+- **Ollama `/api/ps`** reports each loaded model's `size` / `size_vram`
+  (best candidate — directly attributable to the model+context).
+- `/proc/meminfo` (unified memory == system memory on Spark).
+- `tegrastats` if available.
+
+This is flagged as an open item for the telemetry layer; it does not
+block the pass/fail heatmap, only the memory-growth visualization.
+
+---
+
 ## Fixture format
 
 Lives at `data/long_context/long_context_retrieval_v1.json`, following
@@ -319,18 +423,28 @@ experiment requests + what each model claims to support.)
 
 ## Telemetry additions (per task)
 
-On top of the standard power/memory/temp collectors:
+On top of the standard power/temp collectors (and see the probe findings
+above — several of these are now confirmed, not assumed):
 
-- `prefill_time_s` — **audit existing adapters**; this is sneaky work.
-  Ollama's API sometimes returns 0 on cache hits, and llama.cpp reports
-  it differently. A weekend of per-adapter calibration is budgeted here,
-  not assumed free.
+- `prefill_time_s` — comes from Ollama's `prompt_eval_duration`. **Cache
+  hits zero it** (confirmed: re-sending an identical prompt collapses
+  prefill to ~0.02 s). Mitigated by the per-repetition nonce, not by
+  adapter changes.
 - `prefill_tokens_per_sec` — derived: `context_tokens_loaded /
-  prefill_time_s`.
-- `context_tokens_loaded` — the **actual** tokenized length (verify the
-  backend loaded the full context, don't trust the target).
-- `peak_memory_mb` during prefill — already collected; this is where
-  Spark's 128 GB matters most.
+  prefill_time_s`. Measured 640–2500 tok/s depending on model.
+- `context_tokens_loaded` — the **actual** `prompt_eval_count` (confirmed
+  reliable and stable). Drives the 1–2 iteration truncation correction.
+- `peak_memory_mb` during prefill — **NOT available via `nvidia-smi` on
+  Spark** (`memory.used` returns `[N/A]`; unified memory). Must come from
+  Ollama `/api/ps` (`size`/`size_vram`), `/proc/meminfo`, or
+  `tegrastats`. This is the open telemetry item; it gates only the
+  memory-growth chart, not the pass/fail heatmap.
+- Temperature (°C) and power (W) **do** work via `nvidia-smi`.
+
+The Ollama adapter also needs two small changes for this suite: set
+`options.num_ctx` per request, and raise the long-context request
+timeout to **≥ 600 s** (gemma-class models need ~205 s for a 131k
+prefill; the current 300 s default is too tight).
 
 ---
 
@@ -409,8 +523,16 @@ Target ≥ 12:
 
 ## Open questions deferred to implementation time
 
-- Exact tokenizer access path per backend (Ollama tokenize endpoint vs.
-  llama.cpp `tokenize` vs. heuristic fallback) — resolve when wiring the
-  adapters; the three-tier fallback above is the contract.
+- **Memory telemetry source on Spark.** `nvidia-smi` memory query is
+  `[N/A]`. Decide between Ollama `/api/ps`, `/proc/meminfo`, and
+  `tegrastats` (probe each at implementation time). Gates only the
+  memory-growth chart.
+- ~~Tokenizer access path~~ **Resolved by the probe:** use
+  `prompt_eval_count` as the oracle — estimate via the model's
+  chars/token ratio, then do 1–2 correction iterations. No tokenizer
+  files shipped.
 - First-failure threshold default (50 % vs. 80 %) — pick during the
   first real run when we can see the shape of the curve.
+
+Re-run the probe any time with `scripts/probe_long_context.py` (see its
+`--help`); it is read-only and writes nothing to the repo.
