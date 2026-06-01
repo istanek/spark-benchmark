@@ -19,6 +19,11 @@ class SamplingConfig(BaseModel):
     top_p: float = 1.0
     seed: int = 42
     max_tokens: int = 2048
+    # Optional explicit context-window size (Ollama `options.num_ctx`).
+    # None = let the backend use its default. The long_context suite sets
+    # this per request so a long prompt actually loads instead of being
+    # silently truncated to the server default.
+    num_ctx: int | None = None
 
 
 class ExperimentSpec(BaseModel):

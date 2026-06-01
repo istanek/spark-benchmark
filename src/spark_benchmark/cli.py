@@ -358,8 +358,30 @@ def run(
         backend.unload()
         return
     if run_suite:
-        suite = load_reliability_suite(repo_root, run_suite)
         backend = build_backend(backend_config)
+        if run_suite in {"long_context_retrieval", "long_context_retrieval_v1"}:
+            from spark_benchmark.long_context import (
+                load_haystack_texts,
+                load_long_context_fixture,
+                run_long_context_suite,
+            )
+
+            fixture = load_long_context_fixture(
+                repo_root / "data" / "long_context" / "long_context_retrieval_v1.json"
+            )
+            haystack_texts = load_haystack_texts(fixture, repo_root)
+            summary = run_long_context_suite(
+                run_dir=run_dir,
+                fixture=fixture,
+                haystack_texts=haystack_texts,
+                backend=backend,
+                backend_config=backend_config,
+                model_configs=model_configs,
+                sampling=experiment_spec.sampling,
+            )
+            print(json.dumps(summary, ensure_ascii=False, indent=2))
+            return
+        suite = load_reliability_suite(repo_root, run_suite)
         if run_suite in {"hallucination_grounding", "hallucination_grounding_v1"}:
             summary = run_hallucination_grounding_suite(
                 run_dir=run_dir,

@@ -44,17 +44,23 @@ class OllamaAdapter:
         return tag
 
     def _build_payload(self, prompt: str, params: SamplingConfig) -> dict[str, Any]:
+        options: dict[str, Any] = {
+            "temperature": params.temperature,
+            "top_p": params.top_p,
+            "seed": params.seed,
+            "num_predict": params.max_tokens,
+        }
+        # Explicit context window: without this a long prompt is silently
+        # truncated to the server default. Only sent when set so short-suite
+        # behaviour is unchanged.
+        if params.num_ctx is not None:
+            options["num_ctx"] = params.num_ctx
         return {
             "model": self._model_tag(),
             "prompt": prompt,
             "stream": False,
             "think": False,
-            "options": {
-                "temperature": params.temperature,
-                "top_p": params.top_p,
-                "seed": params.seed,
-                "num_predict": params.max_tokens,
-            },
+            "options": options,
         }
 
     def generate(self, prompt: str, params: SamplingConfig) -> GenerationResult:
@@ -121,6 +127,44 @@ class OllamaAdapter:
 
     def get_metrics(self) -> InferenceMetrics:
         return self.last_metrics
+
+    def _ps_endpoint(self) -> str:
+        # self.endpoint is the /api/generate URL; derive the sibling /api/ps.
+        base = self.endpoint.rsplit("/api/", 1)[0]
+        return f"{base}/api/ps"
+
+    def memory_snapshot(self) -> dict[str, Any] | None:
+        """Best-effort memory for the loaded model via Ollama ``/api/ps``.
+
+        On the DGX Spark ``nvidia-smi`` reports ``memory.used`` as N/A
+        (unified memory), so ``/api/ps`` — which lists resident models with
+        their ``size`` / ``size_vram`` in bytes — is the reliable source for
+        the long-context memory-growth story. Returns ``None`` if the
+        endpoint is unreachable or the model is not resident.
+        """
+        if self.model is None:
+            return None
+        try:
+            tag = self._model_tag()
+        except RuntimeError:
+            return None
+        request = urllib.request.Request(self._ps_endpoint(), method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=15.0) as response:
+                data = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError):
+            return None
+        for entry in data.get("models") or []:
+            if entry.get("name") == tag or entry.get("model") == tag:
+                size = int(entry.get("size") or 0)
+                size_vram = int(entry.get("size_vram") or 0)
+                return {
+                    "size_bytes": size,
+                    "size_vram_bytes": size_vram,
+                    "size_mb": round(size / (1024 * 1024), 1),
+                    "size_vram_mb": round(size_vram / (1024 * 1024), 1),
+                }
+        return None
 
     def unload(self) -> None:
         """Evict the current model from Ollama's memory so the next model fits.

@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`long_context_retrieval` runner (layer 2 of the v0.4.0 suite).**
+  Single-needle NIAH execution across the fixture grid. For each model it
+  iterates the `length × depth × needles_per_cell` matrix and writes one
+  of three states per cell: `pass`/`fail` (ran and substring-scored),
+  `skipped_unsupported` (length exceeds the model's claimed context), or
+  `error` (backend raised — e.g. OOM — captured, never fatal). Built on
+  the probe findings: each cell prompt carries a deterministic-but-unique
+  nonce to defeat Ollama's prefill cache, `options.num_ctx` is set
+  explicitly per request, the backend request timeout is bumped to
+  ≥ 600 s for long prefills, and the reported context length is the
+  backend's actual `prompt_eval_count` (never the char-based estimate).
+  Memory is sourced from Ollama `/api/ps` (new
+  `OllamaAdapter.memory_snapshot()`) since `nvidia-smi` reports N/A on the
+  Spark's unified memory. Summary aggregates per-cell pass rates, average
+  prefill tok/s, peak VRAM, and a first-failure-length per model, plus a
+  per-model length×depth markdown heatmap table. Wired into both the
+  orchestration bundle and the `run --suite long_context_retrieval` path;
+  added `SamplingConfig.num_ctx`. Reporting/HTML heatmaps land in layer 3.
 - **Design spec for `long_context_retrieval` (v0.4.0 target).** New
   `docs/long-context-spec.md` is the implementation-ready plan for the
   single-needle NIAH suite, written against the real v0.3.0 codebase.

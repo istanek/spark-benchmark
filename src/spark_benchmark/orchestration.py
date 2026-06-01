@@ -15,6 +15,11 @@ from spark_benchmark.sustained_throughput import (
     load_sustained_throughput_suite,
     run_sustained_throughput_suite,
 )
+from spark_benchmark.long_context import (
+    load_haystack_texts,
+    load_long_context_fixture,
+    run_long_context_suite,
+)
 from spark_benchmark.models import BackendConfig, GenerationResult, ModelConfig, SamplingConfig
 from spark_benchmark.results_bundle import write_json, write_manifest, write_result
 from spark_benchmark.reliability import (
@@ -71,6 +76,8 @@ def parse_benchmark_request(request: str, available_models: list[str]) -> Benchm
         selected_suites.append("code_generation")
     if any(token in normalized for token in ("sustained", "throttle", "thermal", "throttling", "long-run", "dlouhodob", "thermalni", "termaln")):
         selected_suites.append("sustained_throughput")
+    if any(token in normalized for token in ("long context", "long-context", "dlouhý kontext", "dlouhy kontext", "needle", "haystack", "niah", "retrieval", "kontextové okno", "kontextove okno")):
+        selected_suites.append("long_context_retrieval")
 
     if not selected_suites:
         selected_suites = ["openclaw_speed", "hallucination_grounding", "practical_structured_output"]
@@ -230,6 +237,21 @@ def run_benchmark_bundle(
             summary = run_sustained_throughput_suite(
                 run_dir=suite_dir,
                 suite=suite,
+                backend=backend,
+                backend_config=backend_config,
+                model_configs=model_configs,
+                sampling=experiment.sampling,
+                progress_callback=progress_callback,
+            )
+        elif suite_name in {"long_context_retrieval", "long_context_retrieval_v1"}:
+            fixture = load_long_context_fixture(
+                repo_root / "data" / "long_context" / "long_context_retrieval_v1.json"
+            )
+            haystack_texts = load_haystack_texts(fixture, repo_root)
+            summary = run_long_context_suite(
+                run_dir=suite_dir,
+                fixture=fixture,
+                haystack_texts=haystack_texts,
                 backend=backend,
                 backend_config=backend_config,
                 model_configs=model_configs,
