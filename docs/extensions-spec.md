@@ -17,6 +17,14 @@ Implementation order (smallest-to-largest payoff, easiest pipeline validation fi
 
 ## Suite 1: long_context_retrieval
 
+> **Superseded for implementation.** This section is the original
+> aspirational sketch. The buildable, v0.4.0-targeted spec — written
+> against the real codebase and with locked-in decisions (Project
+> Gutenberg haystacks, Part A only, per-model tokenization, inline-SVG
+> heatmaps, 4×4×8 grid) — lives in
+> [`docs/long-context-spec.md`](long-context-spec.md). Where the two
+> disagree, the newer document wins.
+
 ### Purpose
 
 Quantify whether Spark's larger unified memory and bandwidth translate into a useful

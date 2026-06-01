@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Design spec for `long_context_retrieval` (v0.4.0 target).** New
+  `docs/long-context-spec.md` is the implementation-ready plan for the
+  single-needle NIAH suite, written against the real v0.3.0 codebase.
+  Locks in: Project Gutenberg / Apache-2.0 public-domain haystacks,
+  Part A (substring scoring) only — no LLM judge, per-model
+  tokenization with honest reported lengths, a 4×4×8 grid (128
+  tasks/model, 8 samples/cell) for statistically meaningful heatmaps,
+  inline-SVG heatmaps via a new `_svg_heatmap` helper (no matplotlib /
+  no new runtime dependency), deterministic needle/haystack selection,
+  and three-state cells (pass / N/A-unsupported / OOM). Supersedes the
+  aspirational Suite 1 sketch in `docs/extensions-spec.md`. Also records
+  the agreed release ladder: v0.4.0 long-context → v0.5.0
+  quantization sweep → v0.6.0 concurrent serving.
+
 ## [0.3.0] - 2026-06-01
 
 ### Added
