@@ -55,6 +55,11 @@ results/custom/
 # shipped templates.
 examples/custom-tests/quick-saved/
 
+# Long-context haystacks — large public-domain corpora fetched on demand
+# via scripts/fetch_haystacks.sh. Provenance lives in the suite fixture;
+# the bytes stay out of the repo. The directory's README is kept.
+data/long_context/haystacks/*.txt
+
 # Local secrets / overrides
 .env
 .env.local

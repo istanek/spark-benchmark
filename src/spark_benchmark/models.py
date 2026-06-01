@@ -63,6 +63,11 @@ class ModelConfig(BaseModel):
     source: str
     context_length: int
     artifact_path: str | None = None
+    # Optional grouping key linking quantization variants of the same base
+    # model (e.g. "llama-3.3-70b"). Set explicitly in YAML — never inferred
+    # from `name` (brittle for odd names). Primarily consumed by the
+    # quantization_sweep post-processor; long_context uses it for labels.
+    base_model: str | None = None
     notes: list[str] = Field(default_factory=list)
 
 

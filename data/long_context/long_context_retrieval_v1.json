@@ -1,0 +1,102 @@
+{
+  "name": "long_context_retrieval_v1",
+  "category": "reliability",
+  "version": "0.4.0",
+  "description": "Single-needle Needle-in-a-Haystack at 4k-128k tokens. One distinctive fact is inserted at a known depth into a long public-domain filler text; the model is asked a question whose answer is only in that fact. Deterministic case-insensitive substring scoring, no LLM judge.",
+  "notes": [
+    "Part A (single-needle) only; multi-needle reasoning is deferred (needs an LLM judge).",
+    "Haystacks are Project Gutenberg public-domain texts, fetched on demand via scripts/fetch_haystacks.sh and git-ignored to keep the repo lean.",
+    "Needles span >=3 categories (alphanumeric code, date, named entity, location, quantity) so a single (length, depth) cell can draw 8 distinct needles without repeats.",
+    "context_lengths/depths/needles_per_cell are config-driven; a deep-dive run can widen the grid."
+  ],
+  "haystacks": {
+    "literary_melville": {
+      "source_url": "https://www.gutenberg.org/files/2701/2701-0.txt",
+      "license": "Public Domain (Project Gutenberg)",
+      "text_file": "data/long_context/haystacks/melville_moby_dick.txt"
+    },
+    "scientific_darwin": {
+      "source_url": "https://www.gutenberg.org/files/1228/1228-0.txt",
+      "license": "Public Domain (Project Gutenberg)",
+      "text_file": "data/long_context/haystacks/darwin_origin_of_species.txt"
+    }
+  },
+  "needles": [
+    {
+      "id": "code_7B_MIRA",
+      "category": "alphanumeric_code",
+      "text": "The secret access code for the maintenance hatch is 7B-MIRA-4419.",
+      "question": "What is the secret access code for the maintenance hatch? Answer with only the code.",
+      "expected_substring": "7B-MIRA-4419"
+    },
+    {
+      "id": "code_vault_QX",
+      "category": "alphanumeric_code",
+      "text": "The vault override sequence recorded by the night supervisor was QX-8830-ZD.",
+      "question": "What was the vault override sequence recorded by the night supervisor? Answer with only the sequence.",
+      "expected_substring": "QX-8830-ZD"
+    },
+    {
+      "id": "date_project_zenith",
+      "category": "date",
+      "text": "Project Zenith was officially launched on November 14, 2023.",
+      "question": "On what date was Project Zenith officially launched?",
+      "expected_substring": "November 14, 2023"
+    },
+    {
+      "id": "date_treaty_signing",
+      "category": "date",
+      "text": "The Halvorsen trade treaty was signed on March 2, 1987, after years of negotiation.",
+      "question": "On what date was the Halvorsen trade treaty signed?",
+      "expected_substring": "March 2, 1987"
+    },
+    {
+      "id": "person_chief_archivist",
+      "category": "named_entity_person",
+      "text": "The chief archivist of the Meridian Institute was Dr. Eleanor Vance.",
+      "question": "Who was the chief archivist of the Meridian Institute?",
+      "expected_substring": "Eleanor Vance"
+    },
+    {
+      "id": "person_expedition_lead",
+      "category": "named_entity_person",
+      "text": "The 1962 deep-cave expedition was led by a geologist named Tomas Brennan.",
+      "question": "Who led the 1962 deep-cave expedition?",
+      "expected_substring": "Tomas Brennan"
+    },
+    {
+      "id": "location_battery_plant",
+      "category": "location",
+      "text": "The Kappa battery plant is located in the city of Ostrava.",
+      "question": "In which city is the Kappa battery plant located?",
+      "expected_substring": "Ostrava"
+    },
+    {
+      "id": "location_observatory",
+      "category": "location",
+      "text": "The Lindqvist radio observatory sits on a plateau outside the town of Kiruna.",
+      "question": "Near which town is the Lindqvist radio observatory located?",
+      "expected_substring": "Kiruna"
+    },
+    {
+      "id": "quantity_reactor_output",
+      "category": "quantity",
+      "text": "At peak load the Solaris reactor produced exactly 1,840 megawatts.",
+      "question": "How many megawatts did the Solaris reactor produce at peak load? Answer with the number.",
+      "expected_substring": "1,840"
+    },
+    {
+      "id": "quantity_archive_volumes",
+      "category": "quantity",
+      "text": "The restored archive contained 27,506 catalogued volumes in total.",
+      "question": "How many catalogued volumes did the restored archive contain? Answer with the number.",
+      "expected_substring": "27,506"
+    }
+  ],
+  "test_matrix": {
+    "context_lengths_tokens": [4096, 16384, 65536, 131072],
+    "depth_percentages": [0, 33, 66, 100],
+    "needles_per_cell": 8,
+    "haystacks": ["literary_melville", "scientific_darwin"]
+  }
+}
