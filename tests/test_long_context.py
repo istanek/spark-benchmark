@@ -293,6 +293,26 @@ def test_score_niah_no_match() -> None:
     assert details["matched"] is False
 
 
+def test_score_niah_thousands_separator_either_direction() -> None:
+    # Model drops the comma; expected has it (the real "1,840" vs "1840" case).
+    assert score_niah("the reactor produced 1840 MW", "1,840")[0] is True
+    # And the reverse: expected plain, model adds a separator.
+    assert score_niah("the archive held 27,506 volumes", "27506")[0] is True
+    # Space as a thousands separator also normalises.
+    assert score_niah("about 1 840 units", "1840")[0] is True
+
+
+def test_score_niah_distinct_numbers_still_fail() -> None:
+    # Normalisation must not collapse genuinely different numbers.
+    assert score_niah("the value is 1840", "1,841")[0] is False
+
+
+def test_score_niah_date_comma_preserved() -> None:
+    # The comma in a date is followed by a space, not a digit, so it stays;
+    # the existing whitespace-normalised match keeps working.
+    assert score_niah("launched on November 14, 2023", "November 14, 2023")[0] is True
+
+
 # --------------------------------------------------------------------- #
 # Deterministic selection                                                #
 # --------------------------------------------------------------------- #
@@ -426,6 +446,14 @@ def test_build_cell_prompt_contains_question_and_nonce() -> None:
     assert "What is X?" in prompt
     assert "DOC BODY" in prompt
     assert "DOCUMENT START" in prompt
+
+
+def test_build_cell_prompt_has_anti_refusal_framing() -> None:
+    # The prompt must tell the model the answer is actually in the document,
+    # otherwise models refuse and every non-recency cell collapses to zero.
+    prompt = build_cell_prompt("DOC BODY", "What is X?", "abc-1").lower()
+    assert "present in the document" in prompt
+    assert "inserted" in prompt
 
 
 # --------------------------------------------------------------------- #

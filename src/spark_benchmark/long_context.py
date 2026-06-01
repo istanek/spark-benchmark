@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -172,15 +173,26 @@ def select_haystack(length: int, depth: int, haystacks: list[str]) -> str:
     return haystacks[_stable_hash(length, depth) % len(haystacks)]
 
 
-def score_niah(response: str, expected: str) -> tuple[bool, dict[str, Any]]:
-    """Case-insensitive substring match with whitespace normalisation.
+# Thousands separators (comma, space, NBSP, narrow NBSP, apostrophe) that
+# sit *between two digits*. Stripping these makes "1,840" == "1 840" ==
+# "1840" so a correct number isn't failed on formatting, while leaving
+# non-numeric punctuation (e.g. the comma in "November 14, 2023", which is
+# followed by a space) untouched.
+_DIGIT_SEPARATOR_RE = re.compile(r"(?<=\d)[ ,\u00a0\u202f'](?=\d)")
 
-    Deterministic, no LLM judge (see docs/long-context-spec.md). Returns
-    ``(passed, details)``.
+
+def score_niah(response: str, expected: str) -> tuple[bool, dict[str, Any]]:
+    """Case-insensitive substring match with whitespace + number normalisation.
+
+    Deterministic, no LLM judge (see docs/long-context-spec.md). Whitespace
+    is collapsed and thousands separators inside numbers are removed so a
+    formatting-only difference ("1840" vs "1,840") still counts as a match.
+    Returns ``(passed, details)``.
     """
 
     def norm(s: str) -> str:
-        return " ".join(s.lower().split())
+        collapsed = " ".join(s.lower().split())
+        return _DIGIT_SEPARATOR_RE.sub("", collapsed)
 
     passed = norm(expected) in norm(response)
     return passed, {
@@ -258,9 +270,16 @@ def cell_nonce(length: int, depth: int, repetition: int) -> str:
 
 
 def build_cell_prompt(haystack_with_needle: str, question: str, nonce: str) -> str:
+    # The "fact is present" framing is deliberate: without it, models treat
+    # the planted needle as out-of-place in the public-domain filler and
+    # refuse ("not answerable"), which collapsed every non-recency cell to
+    # zero across all models. This is standard needle-in-a-haystack framing.
     return (
-        f"[session {nonce}] You are given a long document. Read it carefully "
-        "and answer the question using only information stated in the document.\n\n"
+        f"[session {nonce}] You are given a long document. A specific fact "
+        "needed to answer the question has been inserted somewhere inside it. "
+        "Read carefully, find that fact, and answer using only information "
+        "stated in the document. The answer is present in the document, so do "
+        "not reply that it is missing.\n\n"
         f"=== DOCUMENT START ===\n{haystack_with_needle}\n=== DOCUMENT END ===\n\n"
         f"Question: {question}\nAnswer:"
     )

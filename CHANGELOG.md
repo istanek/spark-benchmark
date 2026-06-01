@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-06-01
+
+### Changed
+
+- **Long-context scoring now ignores thousands separators.** A correct
+  numeric answer was being failed purely on formatting — e.g. a model
+  answering `1840` when the planted fact said `1,840`. `score_niah` now
+  strips digit-group separators (comma, space, NBSP, narrow NBSP,
+  apostrophe) that sit *between two digits*, so `1840` == `1 840` ==
+  `1,840`. Non-numeric punctuation (such as the comma in
+  `November 14, 2023`) is untouched, and genuinely different numbers still
+  fail.
+- **Needle-in-a-haystack prompt now states the fact is present.** A
+  multi-model run showed every model scoring 0 % whenever the needle was
+  *not* at the very end of the context — they treated the planted fact as
+  out-of-place in the public-domain filler and refused ("not answerable").
+  The prompt now uses standard NIAH framing ("a specific fact … has been
+  inserted … the answer is present, do not reply that it is missing"), so
+  the suite measures retrieval rather than refusal. Note: this changes
+  prompt semantics, so long-context pass rates from 0.4.0/0.4.1 are not
+  directly comparable to 0.4.2+.
+
 ## [0.4.1] - 2026-06-01
 
 ### Added
