@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
@@ -18,12 +19,50 @@ from spark_benchmark.models import (
 DEFAULT_ENDPOINT = "http://localhost:11434/api/generate"
 DEFAULT_TIMEOUT_S = 300.0
 
+# Environment overrides — standard Ollama conventions. OLLAMA_HOST redirects
+# every request (e.g. to https://ollama.com for Ollama Cloud); OLLAMA_API_KEY
+# is sent as a Bearer token. The key is read from the environment only and is
+# never copied into BackendConfig.options, so it cannot leak into a manifest.
+ENV_HOST = "OLLAMA_HOST"
+ENV_API_KEY = "OLLAMA_API_KEY"
+
+
+def resolve_ollama_base(options: dict[str, Any] | None = None) -> str:
+    """Return the Ollama base URL (scheme://host[:port], no /api path).
+
+    Precedence: ``$OLLAMA_HOST`` (bare host gets ``https://``) → the
+    ``endpoint`` option → the local default. Used for both /api/generate
+    and sibling endpoints (/api/tags, /api/ps).
+    """
+    host = os.environ.get(ENV_HOST, "").strip()
+    if host:
+        if not host.startswith(("http://", "https://")):
+            host = "https://" + host
+        return host.rstrip("/")
+    endpoint = str((options or {}).get("endpoint") or DEFAULT_ENDPOINT)
+    return endpoint.rsplit("/api/", 1)[0]
+
+
+def ollama_auth_headers() -> dict[str, str]:
+    """Bearer auth header from ``$OLLAMA_API_KEY`` (empty dict when unset)."""
+    key = os.environ.get(ENV_API_KEY, "").strip()
+    return {"Authorization": f"Bearer {key}"} if key else {}
+
+
+def is_cloud_endpoint() -> bool:
+    """True when talking to Ollama Cloud (auth key present or ollama.com host)."""
+    if os.environ.get(ENV_API_KEY, "").strip():
+        return True
+    return "ollama.com" in os.environ.get(ENV_HOST, "").lower()
+
 
 class OllamaAdapter:
     def __init__(self, config: BackendConfig) -> None:
         self.config = config
         self.model: ModelConfig | None = None
-        self.endpoint = str(config.options.get("endpoint") or DEFAULT_ENDPOINT)
+        # $OLLAMA_HOST (if set) wins over the configured endpoint so a cloud
+        # run needs no YAML edits — just the two env vars.
+        self.endpoint = resolve_ollama_base(config.options) + "/api/generate"
         self.timeout_s = float(config.options.get("request_timeout_s") or DEFAULT_TIMEOUT_S)
         self.last_metrics = InferenceMetrics(
             backend_version=config.version,
@@ -33,6 +72,10 @@ class OllamaAdapter:
     def load_model(self, model_config: ModelConfig) -> None:
         self.model = model_config
         self.last_metrics.quantization = model_config.quantization
+
+    def _headers(self) -> dict[str, str]:
+        """JSON content-type plus a Bearer token when $OLLAMA_API_KEY is set."""
+        return {"Content-Type": "application/json", **ollama_auth_headers()}
 
     def _model_tag(self) -> str:
         if self.model is None:
@@ -69,7 +112,7 @@ class OllamaAdapter:
         request = urllib.request.Request(
             self.endpoint,
             data=body,
-            headers={"Content-Type": "application/json"},
+            headers=self._headers(),
             method="POST",
         )
         started = time.perf_counter()
@@ -148,7 +191,9 @@ class OllamaAdapter:
             tag = self._model_tag()
         except RuntimeError:
             return None
-        request = urllib.request.Request(self._ps_endpoint(), method="GET")
+        request = urllib.request.Request(
+            self._ps_endpoint(), headers=ollama_auth_headers(), method="GET"
+        )
         try:
             with urllib.request.urlopen(request, timeout=15.0) as response:
                 data = json.loads(response.read().decode("utf-8"))
@@ -186,7 +231,7 @@ class OllamaAdapter:
         request = urllib.request.Request(
             self.endpoint,
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers=self._headers(),
             method="POST",
         )
         try:

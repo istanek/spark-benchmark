@@ -54,6 +54,33 @@ model in turn, runs every test, and gives you a side-by-side table.
 
 
 --------------------------------------------------------------------------------
+  Ollama Cloud (optional)
+--------------------------------------------------------------------------------
+
+  You can benchmark Ollama Cloud models (the big ones you can't fit on the
+  box, e.g. gpt-oss:120b-cloud, deepseek-v3.1:671b-cloud) instead of a local
+  Ollama. No config edits needed — just two environment variables:
+
+      export OLLAMA_HOST=https://ollama.com
+      export OLLAMA_API_KEY=sk-...        # from https://ollama.com/settings/keys
+
+  Then run as usual and pick a cloud model by its tag, e.g.:
+
+      spark-bench run --suite openclaw_speed \
+                      --model gpt-oss:120b-cloud --allow-auto-detected
+
+  The API key is read from the environment only — it is never written to
+  configs, manifests, or reports.
+
+  Two caveats for cloud runs:
+    - No local GPU telemetry. Memory/temperature/power are unavailable
+      remotely, so those charts stay empty; speed (tokens/s, time-to-first-
+      token) and pass rates work normally.
+    - Cloud calls are billed and go over the network, so long suites (e.g.
+      131k long-context) are slower and cost credits.
+
+
+--------------------------------------------------------------------------------
   Install
 --------------------------------------------------------------------------------
 

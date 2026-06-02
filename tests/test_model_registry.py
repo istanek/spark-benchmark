@@ -1,3 +1,5 @@
+import os
+
 from spark_benchmark import model_registry
 from spark_benchmark.model_registry import (
     DetectedOllamaModel,
@@ -7,9 +9,30 @@ from spark_benchmark.model_registry import (
     is_vision_model,
     resolve_runnable_models,
     slugify_tag,
+    synthesize_cloud_model_config,
     synthesize_model_config,
 )
 from spark_benchmark.models import BackendConfig, BackendKind, ModelConfig
+from spark_benchmark.runners.ollama import (
+    is_cloud_endpoint,
+    ollama_auth_headers,
+    resolve_ollama_base,
+)
+
+
+def _clear_ollama_env() -> dict[str, str | None]:
+    saved = {k: os.environ.get(k) for k in ("OLLAMA_HOST", "OLLAMA_API_KEY")}
+    for k in saved:
+        os.environ.pop(k, None)
+    return saved
+
+
+def _restore_env(saved: dict[str, str | None]) -> None:
+    for k, v in saved.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
 
 
 def _make_backend() -> BackendConfig:
@@ -221,6 +244,57 @@ class _PlainMonkeypatch:
         for target, name, original in reversed(self._undo):
             setattr(target, name, original)
         self._undo.clear()
+
+
+def test_resolve_ollama_base_prefers_env_host() -> None:
+    saved = _clear_ollama_env()
+    try:
+        os.environ["OLLAMA_HOST"] = "https://ollama.com"
+        assert resolve_ollama_base({"endpoint": "http://localhost:11434/api/generate"}) == "https://ollama.com"
+        # Bare host gets https://.
+        os.environ["OLLAMA_HOST"] = "ollama.com"
+        assert resolve_ollama_base({}) == "https://ollama.com"
+    finally:
+        _restore_env(saved)
+
+
+def test_resolve_ollama_base_falls_back_to_option_then_default() -> None:
+    saved = _clear_ollama_env()
+    try:
+        assert resolve_ollama_base({"endpoint": "http://host:9/api/generate"}) == "http://host:9"
+        assert resolve_ollama_base({}) == "http://localhost:11434"
+    finally:
+        _restore_env(saved)
+
+
+def test_ollama_auth_headers_from_env() -> None:
+    saved = _clear_ollama_env()
+    try:
+        assert ollama_auth_headers() == {}
+        os.environ["OLLAMA_API_KEY"] = "sk-test-123"
+        assert ollama_auth_headers() == {"Authorization": "Bearer sk-test-123"}
+        assert is_cloud_endpoint() is True
+    finally:
+        _restore_env(saved)
+
+
+def test_find_config_synthesizes_cloud_tag() -> None:
+    cfg = find_config_by_name_or_tag("gpt-oss:120b-cloud", configs=[], classified=[])
+    assert cfg is not None
+    assert cfg.artifact_path == "gpt-oss:120b-cloud"
+    assert cfg.source == "ollama-cloud"
+
+
+def test_find_config_non_cloud_unknown_returns_none() -> None:
+    assert find_config_by_name_or_tag("does-not-exist", configs=[], classified=[]) is None
+
+
+def test_synthesize_cloud_model_config_fields() -> None:
+    cfg = synthesize_cloud_model_config("deepseek-v3.1:671b-cloud")
+    assert cfg.name == "deepseek-v3.1-671b-cloud"
+    assert cfg.revision == "deepseek-v3.1:671b-cloud"
+    assert cfg.source == "ollama-cloud"
+    assert any("no local GPU telemetry" in n for n in cfg.notes)
 
 
 if __name__ == "__main__":

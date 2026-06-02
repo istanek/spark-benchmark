@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-06-02
+
+### Added
+
+- **Ollama Cloud support.** Benchmark hosted models (e.g.
+  `gpt-oss:120b-cloud`, `deepseek-v3.1:671b-cloud`) with no config changes —
+  set `OLLAMA_HOST=https://ollama.com` and `OLLAMA_API_KEY=…` and pick a
+  cloud model by tag. The Ollama adapter now resolves its base URL from
+  `$OLLAMA_HOST` (falling back to the configured endpoint, then localhost)
+  and sends an `Authorization: Bearer` header from `$OLLAMA_API_KEY` on every
+  request (generate / unload / `/api/ps` / `/api/tags`). New helpers
+  `resolve_ollama_base`, `ollama_auth_headers`, `is_cloud_endpoint`. Model
+  detection is auth-aware, and `find_config_by_name_or_tag` synthesizes a
+  config for an explicit `-cloud` tag even when `/api/tags` doesn't list it
+  (`synthesize_cloud_model_config`).
+- **Security:** the API key is read from the environment only and is never
+  copied into `BackendConfig.options`, manifests, or report payloads.
+
+### Notes
+
+- Cloud runs report speed (tokens/s, TTFT) and pass rates, but **no local
+  GPU telemetry** — memory/power/temperature are unavailable remotely, so
+  those charts stay empty. Cloud calls are billed and traverse the network,
+  so long suites are slower.
+
 ## [0.4.3] - 2026-06-02
 
 ### Added

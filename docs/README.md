@@ -41,6 +41,23 @@ PYTHONPATH=src python3 -m spark_benchmark.cli wizard \
   --experiment configs/experiments/spark-ollama-baseline.yaml --platform spark
 ```
 
+### Ollama Cloud
+
+Point the Ollama backend at [Ollama Cloud](https://ollama.com) with two env
+vars (no config edits) and select a cloud model by tag:
+
+```bash
+export OLLAMA_HOST=https://ollama.com
+export OLLAMA_API_KEY=sk-...          # https://ollama.com/settings/keys
+spark-bench run --suite openclaw_speed --model gpt-oss:120b-cloud --allow-auto-detected
+```
+
+`OLLAMA_HOST` redirects every request; `OLLAMA_API_KEY` is sent as a Bearer
+token and is read from the environment only (never persisted to configs,
+manifests, or reports). Cloud runs report speed/quality but no local GPU
+telemetry (memory/power/temperature are unavailable remotely), and calls are
+billed over the network.
+
 ## Interactive CLI
 
 The harness ships with three interactive modes plus one natural-language

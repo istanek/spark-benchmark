@@ -108,6 +108,26 @@ def synthesize_model_config(detected: DetectedOllamaModel) -> ModelConfig:
     )
 
 
+def synthesize_cloud_model_config(tag: str) -> ModelConfig:
+    """Build a ``ModelConfig`` for an Ollama Cloud tag supplied directly.
+
+    Ollama Cloud tags carry a ``-cloud`` suffix (e.g. ``gpt-oss:120b-cloud``)
+    and may not appear in ``/api/tags``, so a user can name one explicitly
+    and we run it as-is. Marked ``source="ollama-cloud"`` so manifests /
+    reports flag the run as remote (no local GPU telemetry).
+    """
+    return ModelConfig(
+        name=slugify_tag(tag),
+        family="cloud",
+        revision=tag,
+        quantization="cloud",
+        source="ollama-cloud",
+        context_length=131072,
+        artifact_path=tag,
+        notes=["Ollama Cloud model (tag supplied directly); no local GPU telemetry"],
+    )
+
+
 def detect_ollama_models(
     backend_config: BackendConfig, *, timeout: float = 5.0
 ) -> list[DetectedOllamaModel]:
@@ -116,12 +136,19 @@ def detect_ollama_models(
     Returns ``[]`` on any error (no endpoint, network failure, parse failure)
     so callers can use this as a non-fatal probe.
     """
-    endpoint = str(backend_config.options.get("endpoint") or "")
-    if not endpoint:
+    # Honor $OLLAMA_HOST / $OLLAMA_API_KEY so detection works against Ollama
+    # Cloud too, not just the local endpoint from the YAML.
+    from spark_benchmark.runners.ollama import ollama_auth_headers, resolve_ollama_base
+
+    base = resolve_ollama_base(backend_config.options)
+    if not base:
         return []
-    tags_url = endpoint.rsplit("/", 1)[0] + "/tags"
+    tags_url = base + "/api/tags"
     try:
-        with urllib.request.urlopen(tags_url, timeout=timeout) as response:
+        request = urllib.request.Request(
+            tags_url, headers=ollama_auth_headers(), method="GET"
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.load(response)
     except Exception:
         return []
@@ -275,4 +302,7 @@ def find_config_by_name_or_tag(
     for item in classified:
         if item.tag == needle and item.config is not None:
             return item.config
+    # Explicit Ollama Cloud tag the catalog didn't surface — run it as-is.
+    if needle.endswith("-cloud"):
+        return synthesize_cloud_model_config(needle)
     return None
