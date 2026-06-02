@@ -171,6 +171,12 @@ def aggregate_runs(runs_root: Path) -> dict[str, Any]:
                 "first_failure_length",
                 "skipped",
                 "errors",
+                # Per-needle-category retrieval breakdown (long-context):
+                # list of {category, passes, n, pass_rate}. The HTML renderer
+                # draws a category × model pass-rate panel since needle type
+                # (e.g. alphanumeric codes vs. names) drives retrieval as much
+                # as position does.
+                "categories",
             ):
                 if key == "run_dir":
                     model_bucket["extra"]["run_dir"] = str(run_dir)

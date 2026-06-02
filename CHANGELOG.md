@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-06-02
+
+### Added
+
+- **Long-context HTML report: pass-rate by needle type.** A multi-model
+  run showed needle *category* drives retrieval as much as position does —
+  e.g. alphanumeric codes (~17% across all models) are far harder than
+  dates (~67%), because models garble or loop on codes even when they're
+  clearly trying. `build_long_context_summary` now emits a per-model
+  `categories` breakdown ({category, passes, n, pass_rate}), it's forwarded
+  through `aggregate_runs`, and the report renders a model × needle-type
+  pass-rate heatmap. `_svg_heatmap` gained a `left_pad` argument so long
+  model names fit the row gutter.
+- **`scripts/probe_refusal.py`** — a standalone diagnostic (stdlib +
+  Ollama HTTP, no install needed) that varies only the prompt wording
+  (baseline / instruction-at-end / forceful) at a fixed short context. It
+  established that the depth-0 retrieval collapse is **not** a wording or
+  refusal artifact (all three variants score identically), so the
+  anti-refusal prompt is not the lever — needle type and position are.
+
 ## [0.4.2] - 2026-06-01
 
 ### Changed

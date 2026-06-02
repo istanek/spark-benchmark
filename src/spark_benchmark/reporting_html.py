@@ -563,6 +563,7 @@ def _svg_heatmap(
     *,
     cell_w: int = 62,
     cell_h: int = 34,
+    left_pad: int = 92,
 ) -> str:
     """Render a pass-rate heatmap (rows × cols) as scalable inline SVG.
 
@@ -570,10 +571,11 @@ def _svg_heatmap(
     pass-rate, or ``None`` for cells that didn't run (e.g. a context
     length the model can't load — rendered as a dimmed N/A tile). Colour
     runs red → amber → green via :func:`_gradient_color_for_ratio`.
+    ``left_pad`` widens the row-label gutter for long labels (e.g. model
+    names).
     """
     if not row_labels or not col_labels:
         return ""
-    left_pad = 92
     top_pad = 24
     pad = 6
     width = left_pad + len(col_labels) * cell_w + pad
@@ -1833,7 +1835,48 @@ def _render_suite_long_context(models: list[dict[str, Any]]) -> str:
             vram_pts = [(float(length), max(v)) for length, v in sorted(by_len_vram.items())]
             memory_series.append((f"{name} VRAM", vram_pts))
 
+    # Pass-rate by needle category (rows = model, cols = needle type).
+    # Needle type drives retrieval as much as position: an alphanumeric
+    # code is far harder to copy than a city name, even at the same depth.
+    cat_labels = {
+        "alphanumeric_code": "code",
+        "named_entity_person": "person",
+        "date": "date",
+        "location": "location",
+        "quantity": "quantity",
+    }
+    cat_order: list[str] = []
+    cat_values: dict[tuple[str, str], float | None] = {}
+    cat_row_labels: list[str] = []
+    for model in models:
+        categories = _val(model, "categories") or []
+        if not categories:
+            continue
+        name = str(model.get("model") or "?")
+        cat_row_labels.append(name)
+        for cat in categories:
+            cid = str(cat.get("category") or "unknown")
+            label = cat_labels.get(cid, cid)
+            if label not in cat_order:
+                cat_order.append(label)
+            cat_values[(name, label)] = cat.get("pass_rate")
+    category_html = ""
+    if cat_row_labels and cat_order:
+        # Wider gutter than the default so long model names (e.g. hf.co/…)
+        # fit without clipping.
+        gutter = min(360, max(120, 8 * max(len(n) for n in cat_row_labels)))
+        category_html = _svg_heatmap(
+            cat_row_labels, cat_order, cat_values, cell_w=82, left_pad=gutter
+        )
+
     out = '<div class="suite-grid">' + "".join(panels) + "</div>"
+    if category_html:
+        out += (
+            '<div class="suite-wide card"><h3>Retrieval pass-rate by needle type</h3>'
+            '<p class="meta">rows = model · columns = needle category · '
+            "alphanumeric codes are typically the hardest to retrieve verbatim</p>"
+            f"{category_html}</div>"
+        )
     prefill_html = _svg_line_chart(prefill_series, height=160, x_label=" tok", y_label="tok/s")
     if prefill_html:
         out += (

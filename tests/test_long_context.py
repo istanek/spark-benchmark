@@ -581,6 +581,24 @@ def test_build_long_context_summary_counts_states() -> None:
     assert model["pass_rate"] == round(1 / 3, 4)
 
 
+def test_build_long_context_summary_breaks_down_by_needle_category() -> None:
+    rows = [
+        {"model": "m", "context_length": 4096, "depth_pct": 0, "status": "pass", "passed": True, "needle_category": "location"},
+        {"model": "m", "context_length": 4096, "depth_pct": 50, "status": "pass", "passed": True, "needle_category": "location"},
+        {"model": "m", "context_length": 4096, "depth_pct": 0, "status": "fail", "passed": False, "needle_category": "alphanumeric_code"},
+        {"model": "m", "context_length": 4096, "depth_pct": 50, "status": "fail", "passed": False, "needle_category": "alphanumeric_code"},
+        # skipped rows must not count toward any category.
+        {"model": "m", "context_length": 131072, "depth_pct": 0, "status": "skipped_unsupported", "passed": False, "needle_category": "location"},
+    ]
+    fixture = _tiny_fixture(needles_per_cell=1)
+    summary = build_long_context_summary(rows, fixture, _backend_config())
+    cats = {c["category"]: c for c in summary["models"][0]["categories"]}
+    assert cats["location"]["passes"] == 2 and cats["location"]["n"] == 2
+    assert cats["location"]["pass_rate"] == 1.0
+    assert cats["alphanumeric_code"]["passes"] == 0 and cats["alphanumeric_code"]["n"] == 2
+    assert cats["alphanumeric_code"]["pass_rate"] == 0.0
+
+
 # --------------------------------------------------------------------- #
 # Profiles (full / fast grids)                                           #
 # --------------------------------------------------------------------- #

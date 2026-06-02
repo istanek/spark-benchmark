@@ -771,6 +771,10 @@ def _long_context_models() -> list[dict]:
             "first_failure_length": 16384,
             "skipped": 2,
             "errors": 0,
+            "categories": [
+                {"category": "alphanumeric_code", "passes": 1, "n": 3, "pass_rate": 0.3333},
+                {"category": "location", "passes": 3, "n": 3, "pass_rate": 1.0},
+            ],
             "cells": [
                 {"context_length": 4096, "depth_pct": 0, "pass_rate": 1.0, "avg_prefill_tps": 820.0, "peak_vram_mb": 4096.0},
                 {"context_length": 4096, "depth_pct": 100, "pass_rate": 1.0, "avg_prefill_tps": 810.0, "peak_vram_mb": 4096.0},
@@ -815,6 +819,30 @@ def test_render_suite_long_context_has_heatmap_kpi_and_charts() -> None:
     assert "16,384" in block  # the first-failure value, comma-formatted
     assert "Prefill throughput vs context length" in block
     assert "Resident memory vs context length" in block
+
+
+def test_render_suite_long_context_has_needle_category_panel() -> None:
+    block = _render_suite_long_context(_long_context_models())
+    assert "Retrieval pass-rate by needle type" in block
+    # Category labels are shortened for display.
+    assert ">code<" in block
+    assert ">location<" in block
+
+
+def test_render_suite_long_context_without_categories_hides_panel() -> None:
+    models = _long_context_models()
+    for m in models:
+        m.pop("categories", None)
+    block = _render_suite_long_context(models)
+    assert "Retrieval pass-rate by needle type" not in block
+
+
+def test_svg_heatmap_left_pad_widens_gutter() -> None:
+    narrow = _svg_heatmap(["m"], ["code"], {("m", "code"): 1.0}, left_pad=92)
+    wide = _svg_heatmap(["m"], ["code"], {("m", "code"): 1.0}, left_pad=240)
+    # A wider gutter pushes the cell origin right and grows the viewBox.
+    assert "viewBox" in narrow and "viewBox" in wide
+    assert narrow != wide
 
 
 def test_render_suite_long_context_without_memory_hides_memory_chart() -> None:

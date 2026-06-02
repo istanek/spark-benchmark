@@ -485,7 +485,15 @@ def build_long_context_summary(
         name = row["model"]
         bucket = per_model.setdefault(
             name,
-            {"model": name, "_cells": {}, "total": 0, "passes": 0, "skipped": 0, "errors": 0},
+            {
+                "model": name,
+                "_cells": {},
+                "_categories": {},
+                "total": 0,
+                "passes": 0,
+                "skipped": 0,
+                "errors": 0,
+            },
         )
         bucket["total"] += 1
         cell_key = f"{row['context_length']}|{row['depth_pct']}"
@@ -507,6 +515,14 @@ def build_long_context_summary(
             bucket["skipped"] += 1
             cell["skipped"] += 1
             continue
+        # Track per-needle-category retrieval for every scored attempt
+        # (pass/fail/error), since needle *type* — e.g. alphanumeric codes
+        # vs. plain names — drives pass rate as much as position does.
+        catb = bucket["_categories"].setdefault(
+            row.get("needle_category") or "unknown",
+            {"category": row.get("needle_category") or "unknown", "passes": 0, "n": 0},
+        )
+        catb["n"] += 1
         if status == "error":
             bucket["errors"] += 1
             cell["errors"] += 1
@@ -516,6 +532,7 @@ def build_long_context_summary(
         if row.get("passed"):
             bucket["passes"] += 1
             cell["passes"] += 1
+            catb["passes"] += 1
         if row.get("prefill_tokens_per_sec"):
             cell["_tps"].append(row["prefill_tokens_per_sec"])
         mem = row.get("memory") or {}
@@ -533,6 +550,11 @@ def build_long_context_summary(
             del c["_vram"]
             cells.append(c)
         cells.sort(key=lambda c: (c["context_length"], c["depth_pct"]))
+        categories = []
+        for cat in bucket["_categories"].values():
+            cat["pass_rate"] = round(cat["passes"] / cat["n"], 4) if cat["n"] else None
+            categories.append(cat)
+        categories.sort(key=lambda c: c["category"])
         scored = bucket["total"] - bucket["skipped"]
         models_out.append(
             {
@@ -544,6 +566,7 @@ def build_long_context_summary(
                 "pass_rate": round(bucket["passes"] / scored, 4) if scored else None,
                 "first_failure_length": _first_failure_length(cells, failure_threshold),
                 "cells": cells,
+                "categories": categories,
             }
         )
 
