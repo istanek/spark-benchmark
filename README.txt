@@ -64,10 +64,20 @@ model in turn, runs every test, and gives you a side-by-side table.
       export OLLAMA_HOST=https://ollama.com
       export OLLAMA_API_KEY=sk-...        # from https://ollama.com/settings/keys
 
-  Then run as usual and pick a cloud model by its tag, e.g.:
+  Then pick a cloud model by its tag. A few ways:
 
-      spark-bench run --suite openclaw_speed \
-                      --model gpt-oss:120b-cloud --allow-auto-detected
+      # ad-hoc: one prompt, compare against a cloud model
+      spark-bench quick "Summarize the CAP theorem." \
+                        --models gpt-oss:120b-cloud
+
+      # a built-in suite against a specific cloud model
+      spark-bench run --experiment configs/experiments/spark-ollama-baseline.yaml \
+                      --platform spark --run-suite hallucination_grounding \
+                      --model gpt-oss:120b-cloud
+
+  Valid --run-suite values: hallucination_grounding,
+  practical_structured_output, code_generation, sustained_throughput,
+  long_context_retrieval (and long_context_retrieval_fast).
 
   The API key is read from the environment only — it is never written to
   configs, manifests, or reports.

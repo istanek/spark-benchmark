@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-06-02
+
+### Added
+
+- **`run --model` (repeatable).** The `run` command can now target specific
+  models by name/tag instead of always running the full resolved lineup. It
+  accepts a curated experiment name, the raw Ollama tag, its slugified form,
+  or an explicit Ollama Cloud `-cloud` tag — the latter is synthesized on the
+  fly, so cloud models work without an experiment YAML entry or `/api/tags`
+  listing. Example:
+  `run --experiment … --platform spark --run-suite hallucination_grounding --model gpt-oss:120b-cloud`.
+
+### Fixed
+
+- **Docs:** the Ollama Cloud examples in `README.txt`, `docs/README.md`, and
+  the v0.4.4 release notes used a non-existent `run --suite … --model …`
+  invocation. Corrected to real commands (`quick --models …` and
+  `run … --run-suite … --model …`) and listed the valid `--run-suite` values.
+
 ## [0.4.4] - 2026-06-02
 
 ### Added

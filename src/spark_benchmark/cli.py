@@ -38,6 +38,7 @@ from spark_benchmark.model_registry import (
     find_config_by_name_or_tag,
     resolve_runnable_models,
 )
+from spark_benchmark.models import ModelConfig
 from spark_benchmark.orchestration import BenchmarkPlan, parse_benchmark_request, run_benchmark_bundle
 from spark_benchmark.reporting import aggregate_runs, render_cli_benchmark_summary, write_report
 from spark_benchmark.reliability import (
@@ -310,6 +311,16 @@ def run(
     dry_run: bool = typer.Option(False, help="Only validate config and print resolved manifest."),
     smoke_prompt: str | None = typer.Option(None, help="Run a single generation smoke test against the first configured model."),
     run_suite: str | None = typer.Option(None, help="Run a built-in suite such as hallucination_grounding."),
+    model: list[str] | None = typer.Option(
+        None,
+        "--model",
+        help=(
+            "Restrict the run to specific models (repeatable). Accepts a curated "
+            "experiment name, the raw Ollama tag, or its slugified form. An "
+            "explicit Ollama Cloud tag (e.g. gpt-oss:120b-cloud) is accepted "
+            "directly. When omitted, the full resolved lineup runs."
+        ),
+    ),
     allow_auto_detected: bool = typer.Option(
         False,
         "--allow-auto-detected",
@@ -332,6 +343,26 @@ def run(
         allow_auto_detected=allow_auto_detected,
     )
     model_configs = resolved.configs
+
+    if model:
+        # Explicit --model selection. find_config_by_name_or_tag synthesizes a
+        # config for an explicit "-cloud" tag, so cloud models work even when
+        # they are absent from the experiment YAML and /api/tags.
+        selected: list[ModelConfig] = []
+        for needle in model:
+            cfg = find_config_by_name_or_tag(
+                needle, configs=resolved.configs, classified=resolved.classified
+            )
+            if cfg is None:
+                available = ", ".join(m.name for m in resolved.configs) or "(none)"
+                raise typer.BadParameter(
+                    f"model {needle!r} not found. Available: {available}. "
+                    "Pass --allow-auto-detected to use Ollama tags directly, or "
+                    "name an explicit -cloud tag."
+                )
+            if cfg not in selected:
+                selected.append(cfg)
+        model_configs = selected
 
     runs_root = repo_root / "results" / "runs"
     run_id = make_run_id()

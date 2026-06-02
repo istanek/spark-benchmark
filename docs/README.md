@@ -49,14 +49,23 @@ vars (no config edits) and select a cloud model by tag:
 ```bash
 export OLLAMA_HOST=https://ollama.com
 export OLLAMA_API_KEY=sk-...          # https://ollama.com/settings/keys
-spark-bench run --suite openclaw_speed --model gpt-oss:120b-cloud --allow-auto-detected
+
+# ad-hoc one-prompt comparison
+spark-bench quick "Summarize the CAP theorem." --models gpt-oss:120b-cloud
+
+# a built-in suite against a specific cloud model (--model is repeatable)
+spark-bench run --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark --run-suite hallucination_grounding --model gpt-oss:120b-cloud
 ```
 
 `OLLAMA_HOST` redirects every request; `OLLAMA_API_KEY` is sent as a Bearer
 token and is read from the environment only (never persisted to configs,
-manifests, or reports). Cloud runs report speed/quality but no local GPU
-telemetry (memory/power/temperature are unavailable remotely), and calls are
-billed over the network.
+manifests, or reports). `--model` accepts an explicit `-cloud` tag even when
+it isn't in the experiment YAML or `/api/tags`. Valid `--run-suite` values:
+`hallucination_grounding`, `practical_structured_output`, `code_generation`,
+`sustained_throughput`, `long_context_retrieval` (+ `_fast`). Cloud runs
+report speed/quality but no local GPU telemetry (memory/power/temperature are
+unavailable remotely), and calls are billed over the network.
 
 ## Interactive CLI
 
