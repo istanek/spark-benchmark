@@ -10,9 +10,13 @@ from spark_benchmark.long_context import (
     LongContextFixture,
     Needle,
     TestMatrix,
+    _ANSWER_TOKEN_BUDGET,
+    _CALIBRATION_PROBE_NUM_CTX,
+    _CONTEXT_SAFETY_MARGIN,
     _stable_hash,
     build_cell_prompt,
     build_long_context_summary,
+    calibrate_chars_per_token,
     cell_nonce,
     estimate_chars_for_tokens,
     insert_needle,
@@ -513,8 +517,9 @@ def test_runner_sets_num_ctx_per_length() -> None:
     fixture = _tiny_fixture(needles_per_cell=1)
     backend = FakeBackend(fixture.needles, answers=True)
     _run(fixture, backend, [_model()])
-    # Every generate call must carry an explicit num_ctx equal to a grid length.
-    assert all(ctx in (4096, 16384) for ctx in backend.num_ctx_seen)
+    # Every cell's generate call carries num_ctx == its grid length; the leading
+    # calibration probe(s) use the dedicated probe window.
+    assert all(ctx in (4096, 16384, _CALIBRATION_PROBE_NUM_CTX) for ctx in backend.num_ctx_seen)
     assert 4096 in backend.num_ctx_seen
     assert 16384 in backend.num_ctx_seen
 
@@ -527,8 +532,8 @@ def test_runner_skips_unsupported_lengths() -> None:
     model = summary["models"][0]
     # 2 depths * 1 rep at 16384 = 2 skipped
     assert model["skipped"] == 2
-    # backend only called for the 2 supported (4096) cells
-    assert len(backend.prompts) == 2
+    # backend called for: 1 calibration probe (single haystack) + 2 supported (4096) cells
+    assert len(backend.prompts) == 3
 
 
 def test_runner_records_error_on_backend_raise() -> None:
@@ -561,6 +566,76 @@ def test_runner_captures_memory_snapshot() -> None:
     # peak vram surfaces into the per-cell summary
     cell = summary["models"][0]["cells"][0]
     assert cell["peak_vram_mb"] == 4096.0
+
+
+class _RatioBackend:
+    """Backend whose prompt_eval_count reflects a per-corpus chars/token ratio.
+
+    A prompt containing the marker ``DENSE`` tokenizes at 4 chars/token, others
+    at 5 — so the densest corpus should drive calibration.
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.timeout_s = 300.0
+
+    def load_model(self, mc) -> None:  # noqa: D401, ANN001
+        pass
+
+    def unload(self) -> None:
+        pass
+
+    def generate(self, prompt, params):  # noqa: ANN001
+        self.calls += 1
+        ratio = 4.0 if "DENSE" in prompt else 5.0
+        tokens = max(1, int(len(prompt) / ratio))
+        return GenerationResult(
+            prompt=prompt, output="",
+            metrics=InferenceMetrics(prefill_tokens=tokens, prefill_time_s=0.1),
+        )
+
+
+def test_calibrate_chars_per_token_uses_densest_corpus() -> None:
+    backend = _RatioBackend()
+    texts = {"dense": "DENSE " + "word " * 20000, "light": "word " * 20000}
+    ratio = calibrate_chars_per_token(
+        backend, SamplingConfig(max_tokens=256), texts, ["dense", "light"],
+        max_ctx=131072, default_ratio=6.8,
+    )
+    assert backend.calls == 2  # one probe per haystack
+    # densest corpus (4.0) wins, not 5.0 and not the bogus 6.8 static default
+    assert 3.5 < ratio < 4.5
+
+
+def test_calibrate_chars_per_token_falls_back_when_unprobeable() -> None:
+    class _DeadBackend:
+        timeout_s = 300.0
+
+        def generate(self, prompt, params):  # noqa: ANN001
+            raise RuntimeError("backend down")
+
+    ratio = calibrate_chars_per_token(
+        _DeadBackend(), SamplingConfig(max_tokens=256), {"h": "x" * 5000}, ["h"],
+        default_ratio=6.8,
+    )
+    assert ratio == 6.8
+
+
+def test_calibration_corrects_overshooting_default() -> None:
+    # Regression: the static 6.8 ratio built long prompts ~1.6x too big, so the
+    # backend truncated/rejected them. Calibration must pull the ratio down to
+    # the real value so a 131072-token cell's prompt body fits inside num_ctx.
+    backend = _RatioBackend()  # ~4 chars/token on the dense corpus
+    ratio = calibrate_chars_per_token(
+        backend, SamplingConfig(max_tokens=256),
+        {"h": "DENSE " + "lorem ipsum dolor " * 5000}, ["h"],
+        max_ctx=131072, default_ratio=6.8,
+    )
+    assert ratio < 6.8  # corrected downward from the overshooting default
+    target_tokens = 131072 - _ANSWER_TOKEN_BUDGET - _CONTEXT_SAFETY_MARGIN
+    est_chars = estimate_chars_for_tokens(target_tokens, ratio)
+    # prompt body tokenizes back to <= the target (no overshoot -> no truncation)
+    assert est_chars / ratio <= target_tokens + 1
 
 
 def test_build_long_context_summary_counts_states() -> None:
@@ -707,4 +782,6 @@ def test_runner_uses_matrix_override() -> None:
     assert summary["total_rows"] == 1
     assert summary["grid"]["context_lengths"] == [4096]
     assert summary["grid"]["depths"] == [50]
-    assert len(backend.num_ctx_seen) == 1
+    # 1 scored cell + 1 calibration probe (single haystack)
+    assert len(backend.num_ctx_seen) == 2
+    assert backend.num_ctx_seen.count(4096) == 1  # the one scored cell
