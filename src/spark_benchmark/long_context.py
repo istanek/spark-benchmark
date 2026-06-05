@@ -233,6 +233,65 @@ def estimate_chars_for_tokens(
     return max(1, int(target_tokens * chars_per_token))
 
 
+# Calibration probe: a small sample whose token count we read back from the
+# backend (prompt_eval_count) to learn the model's *actual* chars/token, rather
+# than trusting the fixed DEFAULT_CHARS_PER_TOKEN estimate.
+_CALIBRATION_SAMPLE_CHARS = 24000
+_CALIBRATION_PROBE_NUM_CTX = 32768
+# Conservative lower bound on chars/token used only to keep the probe itself
+# safely inside num_ctx (real prose is ~3.8-7.3); never used for cell sizing.
+_CALIBRATION_MIN_RATIO = 3.0
+
+
+def calibrate_chars_per_token(
+    backend: Any,
+    sampling: SamplingConfig,
+    haystack_texts: dict[str, str],
+    haystack_names: list[str],
+    *,
+    max_ctx: int = _CALIBRATION_PROBE_NUM_CTX,
+    default_ratio: float = DEFAULT_CHARS_PER_TOKEN,
+) -> float:
+    """Measure the loaded model's real chars/token via ``prompt_eval_count``.
+
+    docs/long-context-spec.md is explicit that ``prompt_eval_count`` is the
+    oracle and the fixed ratio must be corrected per model — but the run loop
+    historically sized every prompt with the static ``DEFAULT_CHARS_PER_TOKEN``
+    (6.8). On dense public-domain prose the real ratio is ~3.8-4.5, so a
+    "131072-token" cell built ~1.6-1.9x too many characters; the backend then
+    truncated the prompt (Ollama silently drops the front, see its
+    ``truncating input prompt`` warning) or rejected it (vLLM HTTP 400). Either
+    way the planted needle disappeared for every depth except 100%, collapsing
+    long-context pass rates well below 50% on models that actually retrieve
+    fine once the prompt fits.
+
+    This sends one tiny needle-free probe per haystack and returns the
+    **smallest** (densest-corpus) ratio, so sizing with it never overshoots
+    ``num_ctx`` on any haystack. Falls back to ``default_ratio`` if the backend
+    cannot be probed. Cheap: one ~few-thousand-token prefill per haystack.
+    """
+    probe_ctx = min(_CALIBRATION_PROBE_NUM_CTX, max_ctx) if max_ctx else _CALIBRATION_PROBE_NUM_CTX
+    # Keep the probe comfortably inside the window so its own token count is not
+    # itself truncated (which would corrupt the measurement).
+    sample_chars = min(_CALIBRATION_SAMPLE_CHARS, int((probe_ctx - 256) * _CALIBRATION_MIN_RATIO))
+    sample_chars = max(2000, sample_chars)
+    probe_sampling = sampling.model_copy(update={"num_ctx": probe_ctx, "max_tokens": 1})
+
+    ratios: list[float] = []
+    for name in haystack_names:
+        text = (haystack_texts.get(name) or "")[:sample_chars]
+        if not text:
+            continue
+        try:
+            result = backend.generate(text, probe_sampling)
+        except Exception:  # noqa: BLE001 — calibration must never crash the suite
+            continue
+        tokens = getattr(result.metrics, "prefill_tokens", 0) or 0
+        if tokens > 0:
+            ratios.append(len(text) / tokens)
+    return min(ratios) if ratios else default_ratio
+
+
 def slice_haystack(raw_text: str, target_chars: int) -> str:
     """Take the first ``target_chars`` of the haystack, tiling if short."""
     if not raw_text:
@@ -348,6 +407,23 @@ def run_long_context_suite(
         if progress_callback:
             progress_callback(f"  loading {model_config.name} for long-context probe")
         backend.load_model(model_config)
+        # Size prompts against THIS model's real tokenizer (prompt_eval_count
+        # oracle), not the static estimate — otherwise long cells overshoot
+        # num_ctx and get truncated/rejected, sinking the pass rate. See
+        # calibrate_chars_per_token.
+        model_chars_per_token = calibrate_chars_per_token(
+            backend,
+            sampling,
+            haystack_texts,
+            matrix.haystacks,
+            max_ctx=model_config.context_length,
+            default_ratio=chars_per_token,
+        )
+        if progress_callback:
+            progress_callback(
+                f"  {model_config.name}: calibrated ~{model_chars_per_token:.2f} chars/token "
+                f"(was static {chars_per_token:.2f})"
+            )
         task_idx = 0
         for length in matrix.context_lengths_tokens:
             supported = length <= model_config.context_length
@@ -356,7 +432,7 @@ def run_long_context_suite(
                 target_prompt_tokens = max(
                     256, length - _ANSWER_TOKEN_BUDGET - _CONTEXT_SAFETY_MARGIN
                 )
-                target_chars = estimate_chars_for_tokens(target_prompt_tokens, chars_per_token)
+                target_chars = estimate_chars_for_tokens(target_prompt_tokens, model_chars_per_token)
                 for hname in matrix.haystacks:
                     prepared[hname] = slice_haystack(haystack_texts[hname], target_chars)
             for depth in matrix.depth_percentages:
