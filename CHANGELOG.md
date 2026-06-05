@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-05
+
+### Added
+
+- **BYOT `mode: scored` — deterministic scorers (v0.3.0 milestone, shipped
+  in v0.5.0 alongside the quant sweep infrastructure).**
+  `CustomSuiteTask` now accepts an optional `scoring:` block. Five scorers:
+  - `exact_match` — normalised case-insensitive string equality.
+  - `substring_match` — all items in `must_contain` must appear in the output.
+  - `regex_match` — a Python `re` pattern must match somewhere in the output.
+  - `json_fields_match` — output must parse as JSON and contain all
+    `expected_fields` keys with the expected values. Markdown fences are
+    stripped automatically.
+  - `multiple_choice` — a letter/word expected answer must appear as a whole
+    word in the output.
+  A suite-level `scoring:` block provides the default for tasks that don't
+  specify their own. Tasks without any scorer are still run but produce
+  `passed: null`. `validate_custom_suite` now warns when `mode: scored` is
+  used but no scorer is configured for a task.
+  `load_custom_suite` no longer rejects `mode: scored`.
+- **`--dry-run` flag on `spark-bench run-custom`.** Executes one task against
+  one model and stops without writing any files. The JSON output carries
+  `"dry_run": true` and a single row. Useful for sanity-checking backend
+  connectivity and suite config before a long sweep.
+- **Per-task `timeout_s` enforcement.** `run_custom_suite_quick` now wraps
+  each backend call in a `_task_timeout` context manager. On Unix platforms
+  (where `SIGALRM` is available) a timeout triggers `TimeoutError`, which is
+  recorded as an error row and the run continues. On Windows / non-main
+  threads the timeout is a no-op (field is still recorded for forensics).
+- **Quantization sweep infrastructure (v0.5.0 preview).**
+  - `docs/quantization-sweep-spec.md` — implementation-ready spec.
+  - `data/quant/quantization_sweep_v1.json` — fixture with reference
+    thresholds for the v1 lineup (all `enforce: false` until baselines run).
+  - `configs/experiments/spark-quant-sweep.yaml` — experiment covering Q8_0
+    and Q4_K_M variants of all three base models.
+  - Six new model config YAMLs: `qwen-3.6-q8`, `qwen-3.6-q4`, `gemma-4-q8`,
+    `gemma-4-q4`, `nemotron-3-q8`, `nemotron-3-q4`.
+  - `base_model` field added to the three existing curated model YAMLs
+    (`qwen-3.6`, `gemma-4`, `nemotron-3`).
+  The `aggregate_quant_sweep` module and HTML tradeoff table are **not yet
+  implemented** — pull the quant variants and run the experiment; the
+  canonical suites produce per-model results. The post-processor ships in
+  a follow-up patch.
+- **Long-context empirical findings in `METHODOLOGY.md`.** Documents the
+  "lost in the middle" pattern across all four tested models (depth drives
+  retrieval more than context length), prefill throughput numbers, and the
+  v0.4.2 prompt-improvement rationale.
+
+### Changed
+
+- `run_custom_suite_quick` progress callback now includes the scorer method
+  in the task line (`[exact_match]`) and prints `PASS` / `FAIL` with a
+  reason snippet after each scored task.
+- `render_custom_summary_markdown` renames "Per-model telemetry" to
+  "Per-model summary" and adds Pass / Pass rate / Scored columns in
+  `mode: scored`.
+- `build_custom_summary` per-model buckets now always include `passes`,
+  `scored`, and `pass_rate` fields (all zero/null in `mode: quick`).
+- `validate_custom_suite` no longer emits an error for `mode: scored`
+  (it now validates instead of rejecting).
+
+### Tests
+
+- 25 new tests in `tests/test_custom_suites.py` covering:
+  - `ScoringConfig` schema validation (all 5 methods, missing required fields).
+  - `score_response` for all scorers including edge cases (case-sensitivity,
+    word-boundary for multiple_choice, JSON with markdown fences, invalid
+    regex, missing JSON keys).
+  - Runner integration: mode: scored pass/fail, suite-level default scorer,
+    unscored task → null verdict, dry_run no files written.
+  - `validate_custom_suite` warning for unscored tasks in scored mode.
+
 ## [0.4.5] - 2026-06-02
 
 ### Added

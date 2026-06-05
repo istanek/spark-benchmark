@@ -1,0 +1,39 @@
+experiment:
+  name: spark-quant-sweep-v1
+  description: >
+    Quantization sweep: run canonical quality and performance suites against
+    multiple quantization variants of each base model. Group results by
+    base_model to produce a quality-vs-speed-vs-VRAM tradeoff table.
+    See docs/quantization-sweep-spec.md for the full design.
+  platforms:
+    - spark
+  backend: ollama
+  backend_version: local
+  models:
+    # Qwen-3 35B — three quant levels
+    - qwen-3.6          # Ollama default (baseline reference)
+    - qwen-3.6-q8       # Q8_0  — stub: requires qwen3.6:35b-q8_0 pulled locally
+    - qwen-3.6-q4       # Q4_K_M — stub: requires qwen3.6:35b-q4_k_m pulled locally
+    # Gemma-4 27B — three quant levels
+    - gemma-4           # Ollama default (baseline reference)
+    - gemma-4-q8        # Q8_0  — stub: requires gemma4:27b-q8_0 pulled locally
+    - gemma-4-q4        # Q4_K_M — stub: requires gemma4:27b-q4_k_m pulled locally
+    # Nemotron-3 33B — three quant levels
+    - nemotron-3        # Ollama default (baseline reference)
+    - nemotron-3-q8     # Q8_0  — stub: requires nemotron3:33b-q8_0 pulled locally
+    - nemotron-3-q4     # Q4_K_M — stub: requires nemotron3:33b-q4_k_m pulled locally
+  suites:
+    - hallucination_grounding
+    - practical_structured_output
+    - code_generation
+    - openclaw_speed
+  sampling:
+    temperature: 0.0
+    top_p: 1.0
+    seed: 42
+    max_tokens: 512
+  context_lengths:
+    - 512
+    - 4096
+  repetitions: 1
+  warmup_runs: 0

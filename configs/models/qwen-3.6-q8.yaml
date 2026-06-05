@@ -1,0 +1,12 @@
+name: qwen-3.6-q8
+family: qwen
+base_model: qwen3-35b
+revision: qwen3.6:35b-q8_0
+quantization: Q8_0
+source: ollama-local
+context_length: 131072
+artifact_path: qwen3.6:35b-q8_0
+notes:
+  - quantization sweep variant (Q8_0)
+  - pull with: ollama pull qwen3.6:35b-q8_0
+  - tag is a placeholder — confirm via `ollama list` before running

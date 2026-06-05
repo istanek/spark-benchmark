@@ -1,0 +1,12 @@
+name: nemotron-3-q8
+family: nemotron
+base_model: nemotron3-33b
+revision: nemotron3:33b-q8_0
+quantization: Q8_0
+source: ollama-local
+context_length: 131072
+artifact_path: nemotron3:33b-q8_0
+notes:
+  - quantization sweep variant (Q8_0)
+  - pull with: ollama pull nemotron3:33b-q8_0
+  - tag is a placeholder — confirm via `ollama list` before running

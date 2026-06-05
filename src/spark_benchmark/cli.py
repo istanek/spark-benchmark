@@ -5,6 +5,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich import print
@@ -848,13 +849,28 @@ def run_custom_command(
         "--output-dir",
         help="Where to write the run bundle. Defaults to results/custom/<slug>/<run-id>/.",
     ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help=(
+            "Run only the first task against the first model, then stop. "
+            "No files are written. Useful for verifying the suite config "
+            "and backend connection before committing to a long run."
+        ),
+    ),
 ) -> None:
-    """Execute a Mode A custom suite end-to-end.
+    """Execute a custom suite end-to-end (mode: quick or mode: scored).
 
-    No scoring is performed in v0.2.0 — this just generates each model's
-    response to each prompt, captures telemetry, and writes a side-by-side
-    Markdown summary. See `docs/custom-tests-spec.md` for the v0.3+
-    roadmap that adds scoring, judges, and sharing.
+    In ``mode: quick``: generates each model's response to each prompt,
+    captures telemetry, and writes a side-by-side Markdown / HTML summary.
+    No scoring is applied.
+
+    In ``mode: scored``: same as above, but also applies the scorer defined
+    in each task's ``scoring:`` block (or the suite-level default) and
+    reports PASS / FAIL with a reason string in the summary.
+
+    Use ``--dry-run`` to run one task against one model without writing any
+    files — good for a quick sanity check before a long sweep.
     """
     maybe_print_banner()
     try:
@@ -945,33 +961,39 @@ def run_custom_command(
         default_sampling=experiment_spec.sampling,
         progress_callback=lambda message: console.print(f"[cyan]{message}[/cyan]"),
         resume=not no_resume,
+        dry_run=dry_run,
     )
-    print(
-        json.dumps(
+
+    if dry_run:
+        print(json.dumps({"status": "dry_run", "rows": summary.get("rows", [])}, ensure_ascii=False, indent=2))
+        return
+
+    out: dict[str, Any] = {
+        "status": "ok",
+        "run_dir": str(run_dir),
+        "results": str(run_dir / "results.jsonl"),
+        "summary_md": str(run_dir / "summary.md"),
+        "summary_html": str(run_dir / "summary.html"),
+        "summary_json": str(run_dir / "summary.json"),
+        "task_count": len(loaded.tasks),
+        "models": [cfg.name for cfg in selected_configs],
+        "per_model": [
             {
-                "status": "ok",
-                "run_dir": str(run_dir),
-                "results": str(run_dir / "results.jsonl"),
-                "summary_md": str(run_dir / "summary.md"),
-                "summary_html": str(run_dir / "summary.html"),
-                "summary_json": str(run_dir / "summary.json"),
-                "task_count": len(loaded.tasks),
-                "models": [cfg.name for cfg in selected_configs],
-                "per_model": [
-                    {
-                        "model": bucket["model"],
-                        "completed": bucket["tasks_completed"],
-                        "errored": bucket["tasks_errored"],
-                        "mean_ttft_ms": bucket["mean_ttft_ms"],
-                        "mean_decode_tps": bucket["mean_decode_tps"],
-                    }
-                    for bucket in summary["per_model"]
-                ],
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-    )
+                "model": bucket["model"],
+                "completed": bucket["tasks_completed"],
+                "errored": bucket["tasks_errored"],
+                "mean_ttft_ms": bucket["mean_ttft_ms"],
+                "mean_decode_tps": bucket["mean_decode_tps"],
+                **(
+                    {"passes": bucket.get("passes"), "pass_rate": bucket.get("pass_rate")}
+                    if loaded.mode == "scored"
+                    else {}
+                ),
+            }
+            for bucket in summary.get("per_model", [])
+        ],
+    }
+    print(json.dumps(out, ensure_ascii=False, indent=2))
 
 
 @app.command("quick")

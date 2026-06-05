@@ -7,11 +7,14 @@ from tempfile import TemporaryDirectory
 from spark_benchmark.custom_suites import (
     CustomSuiteDefinition,
     CustomSuiteTask,
+    ScoreResult,
+    ScoringConfig,
     already_completed_pairs,
     build_custom_summary,
     load_custom_suite,
     render_custom_summary_markdown,
     run_custom_suite_quick,
+    score_response,
     slugify_suite_name,
     validate_custom_suite,
 )
@@ -170,16 +173,12 @@ def test_load_custom_suite_from_yaml() -> None:
         assert suite.tasks[0].task_id == "t1"
 
 
-def test_load_custom_suite_rejects_scored_mode() -> None:
+def test_load_custom_suite_accepts_scored_mode() -> None:
     with TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "suite.yaml"
         path.write_text(_YAML_VALID.replace("mode: quick", "mode: scored"), encoding="utf-8")
-        try:
-            load_custom_suite(path)
-        except ValueError as exc:
-            assert "v0.3.0" in str(exc)
-            return
-    raise AssertionError("expected scored mode to be rejected today")
+        suite = load_custom_suite(path)
+        assert suite.mode == "scored"
 
 
 def test_load_custom_suite_from_json_round_trip() -> None:
@@ -432,6 +431,24 @@ def test_build_custom_summary_aggregates_per_model_metrics() -> None:
     assert bucket["wall_time_s"] == 3.2  # 0.1 + 1.0 + 0.1 + 2.0
 
 
+def test_render_custom_summary_markdown_uses_per_model_summary_header() -> None:
+    """The heading changes depending on mode."""
+    rows: list[dict] = []
+    suite_quick = _suite_with_two_tasks()
+    md_quick = render_custom_summary_markdown(build_custom_summary(suite_quick, rows, _make_backend()))
+    assert "## Per-model summary" in md_quick
+    assert "quick (no scoring)" in md_quick
+
+    suite_scored = CustomSuiteDefinition(
+        name="scored-test",
+        mode="scored",
+        tasks=[CustomSuiteTask(task_id="t1", prompt="hello")],
+    )
+    md_scored = render_custom_summary_markdown(build_custom_summary(suite_scored, rows, _make_backend()))
+    assert "scored (deterministic scorers)" in md_scored
+    assert "Pass rate" in md_scored
+
+
 def test_render_custom_summary_markdown_has_telemetry_table_and_per_task_blocks() -> None:
     rows = [
         {
@@ -451,16 +468,315 @@ def test_render_custom_summary_markdown_has_telemetry_table_and_per_task_blocks(
                 "raw": {},
             },
             "error": None,
+            "score": None,
         }
     ]
     summary = build_custom_summary(_suite_with_two_tasks(), rows, _make_backend())
     md = render_custom_summary_markdown(summary)
     assert md.startswith("# Custom suite:")
-    assert "## Per-model telemetry" in md
+    assert "## Per-model summary" in md
     assert "## Side-by-side outputs" in md
     assert "### Task `t1`" in md
     assert "**qwen-3.6**" in md
     assert "Hi." in md
+
+
+# --------------------------------------------------------------------- #
+# ScoringConfig schema                                                  #
+# --------------------------------------------------------------------- #
+
+
+def test_scoring_config_rejects_exact_match_without_expected() -> None:
+    try:
+        ScoringConfig(method="exact_match")
+    except Exception as exc:
+        assert "expected" in str(exc).lower()
+        return
+    raise AssertionError("expected exact_match without 'expected' to raise")
+
+
+def test_scoring_config_rejects_substring_match_empty_list() -> None:
+    try:
+        ScoringConfig(method="substring_match", must_contain=[])
+    except Exception as exc:
+        assert "must_contain" in str(exc).lower()
+        return
+    raise AssertionError("expected empty must_contain to raise")
+
+
+def test_scoring_config_rejects_regex_without_pattern() -> None:
+    try:
+        ScoringConfig(method="regex_match")
+    except Exception as exc:
+        assert "pattern" in str(exc).lower()
+        return
+    raise AssertionError("expected regex_match without 'pattern' to raise")
+
+
+def test_scoring_config_rejects_json_fields_empty_dict() -> None:
+    try:
+        ScoringConfig(method="json_fields_match", expected_fields={})
+    except Exception as exc:
+        assert "expected_fields" in str(exc).lower()
+        return
+    raise AssertionError("expected empty expected_fields to raise")
+
+
+def test_scoring_config_rejects_multiple_choice_without_expected() -> None:
+    try:
+        ScoringConfig(method="multiple_choice")
+    except Exception as exc:
+        assert "expected" in str(exc).lower()
+        return
+    raise AssertionError("expected multiple_choice without 'expected' to raise")
+
+
+# --------------------------------------------------------------------- #
+# score_response                                                        #
+# --------------------------------------------------------------------- #
+
+
+def test_score_exact_match_pass_and_fail() -> None:
+    sc = ScoringConfig(method="exact_match", expected="Paris")
+    assert score_response("Paris", sc).passed is True
+    assert score_response("paris", sc).passed is True  # case-insensitive default
+    assert score_response("  Paris  ", sc).passed is True  # whitespace stripped
+    assert score_response("Not Paris", sc).passed is False
+
+
+def test_score_exact_match_case_sensitive() -> None:
+    sc = ScoringConfig(method="exact_match", expected="Paris", case_sensitive=True)
+    assert score_response("Paris", sc).passed is True
+    assert score_response("paris", sc).passed is False
+
+
+def test_score_substring_match_all_required() -> None:
+    sc = ScoringConfig(method="substring_match", must_contain=["alpha", "beta"])
+    assert score_response("alpha and beta are here", sc).passed is True
+    assert score_response("alpha is here", sc).passed is False
+    result = score_response("nothing", sc)
+    assert result.passed is False
+    assert "alpha" in result.reason or "beta" in result.reason
+
+
+def test_score_regex_match_pass_and_fail() -> None:
+    sc = ScoringConfig(method="regex_match", pattern=r"\d{4}")
+    assert score_response("the year is 2024", sc).passed is True
+    assert score_response("no number", sc).passed is False
+
+
+def test_score_regex_match_invalid_pattern() -> None:
+    sc = ScoringConfig(method="regex_match", pattern=r"[invalid")
+    result = score_response("anything", sc)
+    assert result.passed is False
+    assert "invalid regex" in result.reason
+
+
+def test_score_json_fields_match_pass() -> None:
+    sc = ScoringConfig(method="json_fields_match", expected_fields={"city": "Prague", "country": "Czechia"})
+    output = '{"city": "Prague", "country": "Czechia", "extra": 1}'
+    assert score_response(output, sc).passed is True
+
+
+def test_score_json_fields_match_with_markdown_fence() -> None:
+    sc = ScoringConfig(method="json_fields_match", expected_fields={"key": "value"})
+    output = '```json\n{"key": "value"}\n```'
+    assert score_response(output, sc).passed is True
+
+
+def test_score_json_fields_match_missing_key() -> None:
+    sc = ScoringConfig(method="json_fields_match", expected_fields={"city": "Prague"})
+    output = '{"country": "Czechia"}'
+    result = score_response(output, sc)
+    assert result.passed is False
+    assert "missing key" in result.reason
+
+
+def test_score_json_fields_match_wrong_value() -> None:
+    sc = ScoringConfig(method="json_fields_match", expected_fields={"city": "Prague"})
+    output = '{"city": "Brno"}'
+    result = score_response(output, sc)
+    assert result.passed is False
+    assert "Prague" in result.reason or "Brno" in result.reason
+
+
+def test_score_json_fields_match_invalid_json() -> None:
+    sc = ScoringConfig(method="json_fields_match", expected_fields={"key": "val"})
+    result = score_response("this is not json at all", sc)
+    assert result.passed is False
+    assert "not valid JSON" in result.reason
+
+
+def test_score_multiple_choice_pass_and_fail() -> None:
+    sc = ScoringConfig(method="multiple_choice", expected="B")
+    assert score_response("The answer is B.", sc).passed is True
+    assert score_response("I choose B because…", sc).passed is True
+    assert score_response("Not A at all.", sc).passed is False
+
+
+def test_score_multiple_choice_word_boundary() -> None:
+    # "AB" should not match expected="A" when there is no standalone "A"
+    sc = ScoringConfig(method="multiple_choice", expected="A")
+    # Neither "AB" nor "BA" provides a word-boundary standalone match for "A"
+    assert score_response("Option AB is correct.", sc).passed is False
+    assert score_response("The answer is A.", sc).passed is True
+
+
+# --------------------------------------------------------------------- #
+# mode: scored — runner and summary integration                         #
+# --------------------------------------------------------------------- #
+
+
+def _suite_scored() -> CustomSuiteDefinition:
+    return CustomSuiteDefinition(
+        name="scored-suite",
+        version="0.1",
+        mode="scored",
+        tasks=[
+            CustomSuiteTask(
+                task_id="s1",
+                prompt="What is 2+2?",
+                scoring=ScoringConfig(method="substring_match", must_contain=["4"]),
+            ),
+            CustomSuiteTask(
+                task_id="s2",
+                prompt="Capital of France?",
+                scoring=ScoringConfig(method="exact_match", expected="Paris"),
+            ),
+        ],
+        sampling=SamplingConfig(temperature=0.0, max_tokens=64, seed=42),
+    )
+
+
+def test_run_custom_suite_scored_pass_and_fail() -> None:
+    suite = _suite_scored()
+    # Model replies: s1 gets "4", s2 gets "London" (fail)
+    backend = _FakeBackend(replies={
+        ("qwen-3.6", "What is 2+2?"): "The answer is 4.",
+        ("qwen-3.6", "Capital of France?"): "London",
+    })
+    with TemporaryDirectory() as tmpdir:
+        run_dir = Path(tmpdir)
+        summary = run_custom_suite_quick(
+            suite=suite,
+            backend=backend,
+            backend_config=_make_backend(),
+            model_configs=[_make_model("qwen-3.6", "qwen3.6:35b")],
+            run_dir=run_dir,
+            default_sampling=suite.sampling,
+        )
+        per_model = {b["model"]: b for b in summary["per_model"]}
+        bucket = per_model["qwen-3.6"]
+        assert bucket["scored"] == 2
+        assert bucket["passes"] == 1  # s1 passes (contains "4"), s2 fails (London ≠ Paris)
+        assert bucket["pass_rate"] == 0.5
+        # Rows must have score fields
+        rows = [json.loads(l) for l in (run_dir / "results.jsonl").read_text().splitlines() if l.strip()]
+        s1_row = next(r for r in rows if r["task_id"] == "s1")
+        s2_row = next(r for r in rows if r["task_id"] == "s2")
+        assert s1_row["score"]["passed"] is True
+        assert s2_row["score"]["passed"] is False
+        # Markdown shows PASS / FAIL
+        md = (run_dir / "summary.md").read_text()
+        assert "PASS" in md
+        assert "FAIL" in md
+
+
+def test_run_custom_suite_scored_suite_level_default_scorer() -> None:
+    suite = CustomSuiteDefinition(
+        name="suite-default-scorer",
+        mode="scored",
+        scoring=ScoringConfig(method="substring_match", must_contain=["yes"]),
+        tasks=[
+            CustomSuiteTask(task_id="q1", prompt="Do you agree?"),
+            CustomSuiteTask(task_id="q2", prompt="Any other thoughts?",
+                            scoring=ScoringConfig(method="exact_match", expected="no")),
+        ],
+        sampling=SamplingConfig(temperature=0.0, max_tokens=32, seed=42),
+    )
+    backend = _FakeBackend(replies={
+        ("qwen-3.6", "Do you agree?"): "yes I do",
+        ("qwen-3.6", "Any other thoughts?"): "no",
+    })
+    with TemporaryDirectory() as tmpdir:
+        run_dir = Path(tmpdir)
+        summary = run_custom_suite_quick(
+            suite=suite,
+            backend=backend,
+            backend_config=_make_backend(),
+            model_configs=[_make_model("qwen-3.6", "qwen3.6:35b")],
+            run_dir=run_dir,
+        )
+        bucket = summary["per_model"][0]
+        assert bucket["passes"] == 2
+        assert bucket["scored"] == 2
+
+
+def test_run_custom_suite_scored_unscored_task_gets_null_verdict() -> None:
+    suite = CustomSuiteDefinition(
+        name="partial-scoring",
+        mode="scored",
+        tasks=[
+            CustomSuiteTask(task_id="no-scorer", prompt="Tell me something."),
+        ],
+        sampling=SamplingConfig(temperature=0.0, max_tokens=32, seed=42),
+    )
+    backend = _FakeBackend()
+    with TemporaryDirectory() as tmpdir:
+        run_dir = Path(tmpdir)
+        summary = run_custom_suite_quick(
+            suite=suite,
+            backend=backend,
+            backend_config=_make_backend(),
+            model_configs=[_make_model("qwen-3.6", "qwen3.6:35b")],
+            run_dir=run_dir,
+        )
+        rows = [json.loads(l) for l in (run_dir / "results.jsonl").read_text().splitlines() if l.strip()]
+        assert rows[0]["score"] is None
+        bucket = summary["per_model"][0]
+        assert bucket["scored"] == 0
+        assert bucket["pass_rate"] is None
+
+
+def test_validate_warns_on_scored_mode_without_any_scorer() -> None:
+    suite = CustomSuiteDefinition(
+        name="unscored",
+        mode="scored",
+        tasks=[
+            CustomSuiteTask(task_id="t1", prompt="Hello"),
+            CustomSuiteTask(task_id="t2", prompt="World"),
+        ],
+    )
+    issues = validate_custom_suite(suite)
+    assert any(
+        i.severity == "warning" and "no verdict" in i.message.lower()
+        for i in issues
+    )
+
+
+def test_run_custom_suite_dry_run_no_files_written() -> None:
+    suite = _suite_with_two_tasks()
+    backend = _FakeBackend()
+    with TemporaryDirectory() as tmpdir:
+        run_dir = Path(tmpdir)
+        summary = run_custom_suite_quick(
+            suite=suite,
+            backend=backend,
+            backend_config=_make_backend(),
+            model_configs=[_make_model("qwen-3.6", "qwen3.6:35b"), _make_model("gemma-4", "gemma4:31b")],
+            run_dir=run_dir,
+            dry_run=True,
+        )
+        # dry_run flag is set in summary
+        assert summary.get("dry_run") is True
+        # Only one row was run
+        assert len(summary["rows"]) == 1
+        assert summary["rows"][0]["task_id"] == "t1"
+        # No files were written
+        assert not (run_dir / "results.jsonl").exists()
+        assert not (run_dir / "summary.md").exists()
+        # Backend was called only once for generate
+        assert backend.calls.count(("generate", "qwen-3.6")) == 1
 
 
 # --------------------------------------------------------------------- #

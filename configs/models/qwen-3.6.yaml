@@ -1,5 +1,6 @@
 name: qwen-3.6
 family: qwen
+base_model: qwen3-35b
 revision: qwen3.6:35b
 quantization: ollama-default
 source: ollama-local

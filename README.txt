@@ -216,10 +216,34 @@ work.
         summary.html at the end (open the .html in your browser
         for the prettiest view)
 
-  No scoring in v0.2.0 — Mode A just shows the answers and how fast
-  each model produced them. Scoring (was the answer correct? did the
-  JSON match? did the code compile?) ships in v0.3.0; see
-  docs/custom-tests-spec.md for the roadmap.
+  Two modes are available:
+
+    mode: quick (default)
+        Shows the answers and how fast each model produced them.
+        No pass/fail verdict — useful for exploratory comparisons.
+
+    mode: scored
+        Add a ``scoring:`` block to each task (or one default at
+        suite level). Supported scorers:
+          exact_match       — model must say exactly this (normalised)
+          substring_match   — output must contain all listed substrings
+          regex_match       — a Python regex must match somewhere
+          json_fields_match — output must be valid JSON with these keys
+          multiple_choice   — a letter choice must appear in the output
+
+        Example task with scoring:
+          - task_id: cap-france
+            prompt: "Capital of France? Reply with just the city name."
+            scoring:
+              method: exact_match
+              expected: Paris
+
+        In scored mode the summary table shows Pass / Total and the
+        per-task blocks show ✓ PASS or ✗ FAIL with a reason string.
+
+  Use --dry-run to sanity-check your suite without committing to a
+  long run — it executes one task against one model and stops without
+  writing any files. See docs/custom-tests-spec.md for the full spec.
 
   If a long run dies half-way through (Ollama crashes, you Ctrl-C the
   process, the box reboots) just rerun the same command against the
@@ -311,7 +335,7 @@ work.
   What tests does it run?
 --------------------------------------------------------------------------------
 
-Five test suites, all working today:
+Six test suites, all working today (plus one in preview):
 
   Speed             Short prompts to measure how quickly each model
                     starts answering and how many tokens per second it
@@ -339,13 +363,18 @@ Five test suites, all working today:
                     start versus at the end, peak GPU temperature, and
                     energy per token.
 
-  Custom (BYOT)     Your own prompts, your own model lineup. No
-                    scoring in v0.2.0 — Mode A is pass-through only:
-                    each prompt is sent to each model, telemetry is
-                    captured, and you get a side-by-side report you
-                    read on screen. Scoring (correctness, JSON
-                    schema match, custom Python validators, local
-                    LLM-as-judge) ships in v0.3.0 and later.
+  Long-context      Needle-in-a-haystack retrieval across context
+  retrieval         lengths up to 131k tokens. The tool inserts a
+                    specific fact at different positions and depths
+                    and tests whether the model can retrieve it.
+                    Available in a fast preview profile (18 cells /
+                    model, ~10 min) and a full profile (128 cells).
+
+  Custom (BYOT)     Your own prompts, your own model lineup. Two modes:
+                    quick (side-by-side answers, no scoring) and
+                    scored (each task gets a pass/fail verdict via
+                    exact_match, substring_match, regex, JSON fields,
+                    or multiple_choice scorers). See Way 4 above.
 
 
 --------------------------------------------------------------------------------

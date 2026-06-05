@@ -1,0 +1,55 @@
+{
+  "name": "quantization_sweep_v1",
+  "category": "quant",
+  "version": "0.5.0",
+  "description": "Reference quality thresholds per base model x quantization level for the DGX Spark v1 lineup.",
+  "notes": [
+    "Quality thresholds come from the v0.4.x canonical runs (Ollama-default quantization).",
+    "Populate reference_pass_rates once the first full sweep run completes on Spark.",
+    "enforce: false until baselines are confirmed on real hardware."
+  ],
+  "recommended_suites": [
+    "hallucination_grounding",
+    "practical_structured_output",
+    "code_generation",
+    "openclaw_speed"
+  ],
+  "base_models": [
+    {
+      "base_model": "qwen3-35b",
+      "display_name": "Qwen-3 35B",
+      "variants": ["qwen-3.6", "qwen-3.6-q8", "qwen-3.6-q4"],
+      "reference_variant": "qwen-3.6",
+      "reference_pass_rates": {
+        "hallucination_grounding": null,
+        "practical_structured_output": null,
+        "code_generation": null
+      },
+      "enforce": false
+    },
+    {
+      "base_model": "gemma4-27b",
+      "display_name": "Gemma-4 27B",
+      "variants": ["gemma-4", "gemma-4-q8", "gemma-4-q4"],
+      "reference_variant": "gemma-4",
+      "reference_pass_rates": {
+        "hallucination_grounding": null,
+        "practical_structured_output": null,
+        "code_generation": null
+      },
+      "enforce": false
+    },
+    {
+      "base_model": "nemotron3-33b",
+      "display_name": "Nemotron-3 33B",
+      "variants": ["nemotron-3", "nemotron-3-q8", "nemotron-3-q4"],
+      "reference_variant": "nemotron-3",
+      "reference_pass_rates": {
+        "hallucination_grounding": null,
+        "practical_structured_output": null,
+        "code_generation": null
+      },
+      "enforce": false
+    }
+  ]
+}

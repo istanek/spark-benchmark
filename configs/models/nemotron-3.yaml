@@ -1,5 +1,6 @@
 name: nemotron-3
 family: nemotron
+base_model: nemotron3-33b
 revision: nemotron3:33b
 quantization: ollama-default
 source: ollama-local

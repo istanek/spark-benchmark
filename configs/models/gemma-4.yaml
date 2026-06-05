@@ -1,5 +1,6 @@
 name: gemma-4
 family: gemma
+base_model: gemma4-27b
 revision: gemma4:31b
 quantization: ollama-default
 source: ollama-local

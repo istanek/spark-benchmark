@@ -1,0 +1,12 @@
+name: gemma-4-q8
+family: gemma
+base_model: gemma4-27b
+revision: gemma4:27b-q8_0
+quantization: Q8_0
+source: ollama-local
+context_length: 131072
+artifact_path: gemma4:27b-q8_0
+notes:
+  - quantization sweep variant (Q8_0)
+  - pull with: ollama pull gemma4:27b-q8_0
+  - tag is a placeholder — confirm via `ollama list` before running
