@@ -1097,6 +1097,19 @@ class TUIApp:
         self.log(f"  summary:  {summary_md}")
         self.log(f"  html:     {summary_html}")
         self.log(f"  json:     {summary_json}")
+        if loaded.mode == "scored":
+            self.log_blank()
+            self.log("  Scoring results:")
+            for bucket in summary.get("per_model", []):
+                scored = bucket.get("scored", 0)
+                if scored:
+                    pr = bucket.get("pass_rate") or 0
+                    pct = f"{100 * pr:.1f} %"
+                    bar_len = int(pr * 20)
+                    bar = "█" * bar_len + "░" * (20 - bar_len)
+                    self.log(f"    {bucket['model']:30s}  {bucket['passes']}/{scored}  [{bar}] {pct}")
+                else:
+                    self.log(f"    {bucket['model']:30s}  no scored tasks")
 
     @staticmethod
     def _suite_default_model_indices(
