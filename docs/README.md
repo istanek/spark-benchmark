@@ -227,7 +227,7 @@ produces, no YAML required.
 
 ```bash
 PYTHONPATH=src python3 -m spark_benchmark.cli quick \
-  "Vysvětli česky idiom 'házet hrách na zeď' a uveď moderní příklad." \
+  "Explain the idiom 'throwing peas against a wall' and give a modern example." \
   --experiment configs/experiments/spark-ollama-baseline.yaml \
   --platform spark
 ```

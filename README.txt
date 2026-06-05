@@ -258,7 +258,7 @@ work.
   Way 5 — type one quick prompt, see all models reply
   ---------------------------------------------------
 
-    spark-bench quick "Vysvětli česky, co znamená 'házet hrách na zeď'." \
+    spark-bench quick "Explain what 'throwing peas against a wall' means." \
                       --experiment configs/experiments/spark-ollama-baseline.yaml \
                       --platform spark
 
