@@ -74,31 +74,35 @@ def _canonical_suite_key(name: str) -> str | None:
 
 _CSS = """
 :root {
-  --fg: #0f172a;
-  --fg-muted: #475569;
-  --fg-faint: #94a3b8;
-  --fg-invert: #f8fafc;
-  --bg: #f5f3ff;
-  --bg-card: #ffffff;
-  --bg-row-alt: #f8fafc;
-  --bg-soft: #eef2ff;
-  --border: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --accent: #6366f1;
-  --accent-strong: #4338ca;
-  --accent-cyan: #06b6d4;
-  --accent-violet: #8b5cf6;
-  --good: #16a34a;
-  --good-bg: #dcfce7;
-  --warn: #d97706;
-  --warn-bg: #fef3c7;
-  --bad: #dc2626;
-  --bad-bg: #fee2e2;
-  --code-bg: #0f172a;
+  --fg: #e2e8f0;
+  --fg-muted: #94a3b8;
+  --fg-faint: #475569;
+  --fg-invert: #060d18;
+  --bg: #060d18;
+  --bg-card: #0d1726;
+  --bg-row-alt: #0f1a2e;
+  --bg-soft: #111d2e;
+  --border: rgba(255,255,255,0.08);
+  --border-strong: rgba(255,255,255,0.16);
+  --accent: #76b900;
+  --accent-strong: #5a9000;
+  --accent-cyan: #22d3ee;
+  --accent-violet: #a78bfa;
+  --good: #4ade80;
+  --good-bg: rgba(74,222,128,0.14);
+  --warn: #fb923c;
+  --warn-bg: rgba(251,146,60,0.14);
+  --bad: #f87171;
+  --bad-bg: rgba(248,113,113,0.14);
+  --gold: #fbbf24;
+  --silver: #94a3b8;
+  --bronze: #d97706;
+  --code-bg: #111d2e;
   --code-fg: #e2e8f0;
-  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -1px rgba(15, 23, 42, 0.04);
-  --shadow-lg: 0 20px 40px -10px rgba(76, 29, 149, 0.25);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.5);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.6);
+  --shadow-lg: 0 20px 60px rgba(0,0,0,0.7);
+  --nvidia-green: #76b900;
 }
 * { box-sizing: border-box; }
 html, body { background: var(--bg); }
@@ -124,49 +128,80 @@ small, .meta { color: var(--fg-muted); font-size: 13px; }
 .hero {
   position: relative;
   margin-bottom: 28px;
-  padding: 56px 24px 64px;
-  color: var(--fg-invert);
-  background:
-    radial-gradient(circle at 15% 20%, #8b5cf6 0%, transparent 55%),
-    radial-gradient(circle at 85% 30%, #06b6d4 0%, transparent 55%),
-    linear-gradient(135deg, #1e1b4b 0%, #4c1d95 50%, #312e81 100%);
+  padding: 48px 24px 52px;
+  color: var(--fg);
+  background: linear-gradient(135deg, #060d18 0%, #0a1628 40%, #071a0e 100%);
+  border-bottom: 1px solid rgba(118,185,0,0.3);
   overflow: hidden;
 }
-.hero::after {
+.hero::before {
   content: "";
   position: absolute; inset: 0;
-  background: radial-gradient(ellipse at center bottom, rgba(99, 102, 241, 0.35), transparent 60%);
+  background: radial-gradient(ellipse at 80% 50%, rgba(118,185,0,0.07) 0%, transparent 60%);
   pointer-events: none;
 }
-.hero .hero-inner { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 0 24px; }
-.hero h1 { color: var(--fg-invert); font-size: 52px; }
-.hero .tagline { color: rgba(248, 250, 252, 0.85); font-size: 17px; margin-top: 4px; max-width: 720px; }
+.hero .hero-brand {
+  position: absolute; top: 18px; right: 28px;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.06em;
+  color: var(--fg-muted);
+  z-index: 2;
+}
+.hero .hero-brand .nv { color: var(--nvidia-green); }
+.hero .hero-inner {
+  position: relative; z-index: 1;
+  max-width: 1180px; margin: 0 auto; padding: 0 24px;
+  display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start;
+}
+.hero .hero-main { flex: 1 1 460px; min-width: 0; }
+.hero .hero-breadcrumb {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--nvidia-green);
+  margin-bottom: 10px;
+}
+.hero h1 { color: #e2e8f0; font-size: 52px; }
+.hero .tagline { color: rgba(226,232,240,0.78); font-size: 17px; margin-top: 4px; max-width: 720px; }
 .hero .hero-meta {
   display: flex; flex-wrap: wrap; gap: 8px 16px;
-  margin-top: 20px;
+  margin-top: 16px;
   font-size: 13px;
-  color: rgba(248, 250, 252, 0.75);
+  color: rgba(226,232,240,0.6);
 }
 .hero .hero-meta code {
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 1px 8px; border-radius: 6px; color: var(--fg-invert);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.14);
+  padding: 1px 8px; border-radius: 6px; color: var(--fg);
 }
 .hero .winner-card {
-  margin-top: 28px;
-  display: inline-flex; flex-direction: column;
-  padding: 18px 24px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(8px);
+  flex: 0 1 300px;
+  min-width: 220px;
+  align-self: flex-start;
+  margin-top: 4px;
+  display: flex; flex-direction: column;
+  padding: 18px 22px;
+  background: rgba(251,191,36,0.06);
+  border: 1px solid rgba(251,191,36,0.4);
   border-radius: 14px;
-  box-shadow: var(--shadow-lg);
-  max-width: 720px;
+  box-shadow: 0 0 28px rgba(251,191,36,0.10), var(--shadow-md);
 }
-.hero .winner-card .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.8; }
-.hero .winner-card .name { font-size: 28px; font-weight: 700; margin: 4px 0; letter-spacing: -0.01em; }
-.hero .winner-card .name code { background: transparent; border: none; padding: 0; color: var(--fg-invert); font: inherit; }
-.hero .winner-card .reason { color: rgba(248, 250, 252, 0.85); font-size: 14px; }
+.hero .winner-card .label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--gold); opacity: 0.9;
+}
+.hero .winner-card .name {
+  font-size: 22px; font-weight: 700; margin: 6px 0 4px; letter-spacing: -0.01em; color: #e2e8f0;
+}
+.hero .winner-card .name code { background: transparent; border: none; padding: 0; color: #e2e8f0; font: inherit; }
+.hero .winner-card .reason { color: rgba(226,232,240,0.72); font-size: 13px; }
+.hero .winner-card .kpi-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.hero .winner-card .kpi-chip {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px; font-weight: 600;
+  color: var(--fg-muted);
+}
 
 /* ------------ Stat tiles ------------ */
 .stat-tiles {
@@ -189,6 +224,61 @@ small, .meta { color: var(--fg-muted); font-size: 13px; }
 .stat-tile .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); font-weight: 600; }
 .stat-tile .value { font-size: 28px; font-weight: 700; color: var(--fg); letter-spacing: -0.01em; margin-top: 4px; line-height: 1.1; }
 .stat-tile .sub { font-size: 12px; color: var(--fg-muted); margin-top: 2px; }
+
+/* ------------ Executive Summary ------------ */
+.exec-summary { margin: 0 0 28px; }
+.exec-summary h2 { color: var(--fg); }
+.exec-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.exec-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.exec-card .ec-icon { font-size: 20px; margin-bottom: 8px; line-height: 1; }
+.exec-card .ec-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--fg-muted); margin-bottom: 6px;
+}
+.exec-card .ec-value { font-size: 16px; font-weight: 700; color: var(--fg); margin-bottom: 4px; word-break: break-all; }
+.exec-card .ec-detail { font-size: 12px; color: var(--fg-muted); line-height: 1.45; }
+
+/* ------------ Overall Rankings cards ------------ */
+.rankings-section { margin: 28px 0; }
+.rankings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+.ranking-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.ranking-card.rank-1 { border-color: rgba(251,191,36,0.45); background: rgba(251,191,36,0.04); }
+.ranking-card.rank-2 { border-color: rgba(148,163,184,0.4); }
+.ranking-card.rank-3 { border-color: rgba(217,119,6,0.4); }
+.ranking-card .rc-medal {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 6px;
+}
+.ranking-card.rank-1 .rc-medal { color: var(--gold); }
+.ranking-card.rank-2 .rc-medal { color: var(--silver); }
+.ranking-card.rank-3 .rc-medal { color: var(--bronze); }
+.ranking-card .rc-name { font-size: 16px; font-weight: 700; color: var(--fg); margin-bottom: 5px; word-break: break-all; }
+.ranking-card .rc-score { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 10px; }
+.ranking-card .rc-bullets { list-style: none; margin: 0; padding: 0; }
+.ranking-card .rc-bullets li { font-size: 12px; color: var(--fg-muted); padding: 2px 0; }
+.ranking-card .rc-bullets li::before { content: "·"; margin-right: 6px; color: var(--fg-faint); }
 
 /* ------------ Cards / tables ------------ */
 .card {
@@ -221,11 +311,11 @@ th, td {
   vertical-align: middle;
 }
 thead th { background: var(--bg-soft); font-weight: 600; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: 12px; position: sticky; top: 0; z-index: 1; }
-tbody tr:nth-child(even) td { background: #fafbff; }
+tbody tr:nth-child(even) td { background: var(--bg-row-alt); }
 tbody tr:hover td { background: var(--bg-soft); }
 tbody tr:last-child td { border-bottom: none; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-td code { background: var(--bg-soft); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+td code { background: var(--bg-soft); padding: 1px 6px; border-radius: 5px; font-size: 12.5px; color: var(--fg); }
 
 /* ------------ Pass-rate cells (color-graded fill behind value) ------------ */
 td.cell-pct {
@@ -236,9 +326,9 @@ td.cell-pct {
   background-image: linear-gradient(90deg, var(--cell-fill) var(--cell-pct), transparent var(--cell-pct));
   background-repeat: no-repeat;
 }
-td.cell-pct[data-band="good"] { --cell-fill: var(--good-bg); color: #064e3b; }
-td.cell-pct[data-band="warn"] { --cell-fill: var(--warn-bg); color: #78350f; }
-td.cell-pct[data-band="bad"]  { --cell-fill: var(--bad-bg);  color: #7f1d1d; }
+td.cell-pct[data-band="good"] { --cell-fill: var(--good-bg); color: var(--good); }
+td.cell-pct[data-band="warn"] { --cell-fill: var(--warn-bg); color: var(--warn); }
+td.cell-pct[data-band="bad"]  { --cell-fill: var(--bad-bg);  color: var(--bad); }
 td.cell-pct[data-band="na"]   { color: var(--fg-faint); font-weight: 400; }
 
 /* ------------ Badges ------------ */
@@ -257,7 +347,7 @@ td.cell-pct[data-band="na"]   { color: var(--fg-faint); font-weight: 400; }
 .badge.ok   { background: var(--good-bg); color: var(--good); }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
 .badge.bad  { background: var(--bad-bg);  color: var(--bad);  }
-.badge.accent { background: #ede9fe; color: var(--accent-strong); }
+.badge.accent { background: rgba(118,185,0,0.15); color: var(--accent); }
 
 /* ------------ Commentary / prose ------------ */
 .commentary { font-style: italic; color: var(--fg-muted); margin: 6px 0 12px; line-height: 1.5; }
@@ -385,7 +475,7 @@ svg.lines { width: 100%; height: auto; display: block; }
 }
 .verdict-card h2 { margin-top: 0; }
 .verdict-card .recommendation { font-size: 15px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-.verdict-card .recommendation strong { color: var(--accent-strong); }
+.verdict-card .recommendation strong { color: var(--accent); }
 
 /* ------------ Footer ------------ */
 footer {
@@ -399,9 +489,9 @@ footer code { background: transparent; padding: 0; color: var(--fg-muted); }
 
 /* ------------ Print styles ------------ */
 @media print {
-  body { background: white; }
-  .hero { background: var(--accent-strong); color: white; padding: 24px; }
-  .hero::after { display: none; }
+  body { background: #060d18; }
+  .hero { background: #071a0e; color: #e2e8f0; padding: 24px; }
+  .hero::before { display: none; }
   .stat-tile, .card, table, details { box-shadow: none; break-inside: avoid; }
   details { border: 1px solid var(--border-strong); }
   details > summary { background: var(--bg-soft); }
@@ -488,9 +578,12 @@ def _svg_bars(
         else:
             row_accent = accent
         # Use viewBox so the bar resizes with the flex container.
+        # Note: avoid percentage widths here — tests assert "%" not in html
+        # for num-format bars. Use viewBox units instead.
         svg = (
             f'<svg viewBox="0 0 100 1" preserveAspectRatio="none" aria-hidden="true">'
-            f'<rect x="0" y="0" width="100" height="1" fill="#e2e8f0" />'
+            f'<rect x="0" y="0" width="100" height="1" fill="#0d1726" rx="1"/>'
+            f'<rect x="0" y="0" width="100" height="1" fill="rgba(255,255,255,0.08)" />'
             f'<rect x="0" y="0" width="{ratio * 100:.2f}" height="1" fill="{row_accent}" />'
             f"</svg>"
         )
@@ -584,6 +677,7 @@ def _svg_heatmap(
         f'<svg class="heatmap" viewBox="0 0 {width} {height}" '
         f'style="width:100%;height:auto;display:block;max-width:{width}px;" '
         f'role="img" preserveAspectRatio="xMinYMin meet">'
+        f'<rect width="100%" height="100%" fill="#0d1726" rx="6"/>'
     ]
     # Column (depth) headers.
     for ci, col in enumerate(col_labels):
@@ -687,13 +781,14 @@ def _svg_line_chart(
     parts.append(
         f'<svg class="lines" viewBox="0 0 {width} {height}" '
         f'preserveAspectRatio="none" aria-hidden="true">'
+        f'<rect width="100%" height="100%" fill="#0d1726" rx="6"/>'
     )
     # Light gridlines at 25/50/75 %.
     for frac in (0.25, 0.5, 0.75):
         gy = pad_t + plot_h * (1 - frac)
         parts.append(
             f'<line x1="{pad_l}" y1="{gy:.1f}" x2="{pad_l + plot_w}" y2="{gy:.1f}" '
-            f'stroke="#e2e8f0" stroke-width="0.6" />'
+            f'stroke="rgba(255,255,255,0.08)" stroke-width="0.6" />'
         )
     # Primary series.
     for i, (_, points) in enumerate(series):
@@ -782,12 +877,13 @@ def _svg_gauge(
     return (
         f'<svg viewBox="0 0 200 110" preserveAspectRatio="xMidYMid meet" '
         f'class="gauge" aria-hidden="true" style="width:100%;height:auto;">'
-        f'<path d="M 30 80 A 70 70 0 0 1 170 80" stroke="#e2e8f0" stroke-width="14" fill="none" stroke-linecap="round" />'
+        f'<rect width="100%" height="100%" fill="#0d1726" rx="6"/>'
+        f'<path d="M 30 80 A 70 70 0 0 1 170 80" stroke="#1e293b" stroke-width="14" fill="none" stroke-linecap="round" />'
         f'<path d="M 30 80 A 70 70 0 0 1 {end_x:.2f} {end_y:.2f}" '
         f'stroke="{color}" stroke-width="14" fill="none" stroke-linecap="round" />'
-        f'<text x="100" y="76" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">'
+        f'<text x="100" y="76" text-anchor="middle" font-size="22" font-weight="700" fill="#e2e8f0">'
         f"{_fmt_num(value * 100 if max_value == 1.0 else value, places=0)}{_esc(suffix)}</text>"
-        f'<text x="100" y="100" text-anchor="middle" font-size="11" fill="#64748b">'
+        f'<text x="100" y="100" text-anchor="middle" font-size="11" fill="#94a3b8">'
         f"{_esc(label)}</text>"
         f"</svg>"
     )
@@ -835,11 +931,13 @@ def _svg_dual_bars(
             f'flex-direction:column;gap:2px;overflow:hidden;">'
             f'<svg viewBox="0 0 100 1" preserveAspectRatio="none" '
             f'style="width:100%;height:7px;display:block;">'
-            f'<rect x="0" y="0" width="100" height="1" fill="#e2e8f0"/>'
+            f'<rect x="0" y="0" width="100" height="1" fill="#0d1726" rx="1"/>'
+            f'<rect x="0" y="0" width="100" height="1" fill="rgba(255,255,255,0.08)"/>'
             f'<rect x="0" y="0" width="{ra * 100:.2f}" height="1" fill="{accent_a}"/></svg>'
             f'<svg viewBox="0 0 100 1" preserveAspectRatio="none" '
             f'style="width:100%;height:7px;display:block;">'
-            f'<rect x="0" y="0" width="100" height="1" fill="#e2e8f0"/>'
+            f'<rect x="0" y="0" width="100" height="1" fill="#0d1726" rx="1"/>'
+            f'<rect x="0" y="0" width="100" height="1" fill="rgba(255,255,255,0.08)"/>'
             f'<rect x="0" y="0" width="{rb * 100:.2f}" height="1" fill="{accent_b}"/></svg>'
             f"</div>"
             f'<span class="value">{_fmt_num(va)}{_esc(suffix)} / {_fmt_num(vb)}{_esc(suffix)}</span>'
@@ -894,7 +992,8 @@ def _svg_stacked_bars(
         chunks: list[str] = [
             '<svg viewBox="0 0 100 1" preserveAspectRatio="none" '
             'aria-hidden="true">'
-            '<rect x="0" y="0" width="100" height="1" fill="#e2e8f0"/>'
+            '<rect x="0" y="0" width="100" height="1" fill="#0d1726" rx="1"/>'
+            '<rect x="0" y="0" width="100" height="1" fill="rgba(255,255,255,0.08)"/>'
         ]
         for seg_label, value in segments:
             v = max(0.0, float(value))
@@ -934,14 +1033,15 @@ def _svg_thermometer(
     ratio = max(0.0, min(1.0, (v - min_t) / max((max_t - min_t), 1e-9)))
     color = _gradient_color_for_ratio(ratio)  # hotter = redder
     fill_h = ratio * 80.0  # bulb is at y=90; column starts y=10
+    # Note: test asserts exactly 2 <rect> elements, so no background rect here.
     return (
         '<svg viewBox="0 0 60 110" preserveAspectRatio="xMidYMid meet" '
         'class="thermo" aria-hidden="true" style="width:100%;height:auto;max-height:140px;">'
-        f'<rect x="22" y="10" width="16" height="80" rx="8" fill="#e2e8f0"/>'
+        f'<rect x="22" y="10" width="16" height="80" rx="8" fill="rgba(255,255,255,0.12)"/>'
         f'<rect x="22" y="{10 + (80 - fill_h):.1f}" width="16" height="{fill_h:.1f}" fill="{color}"/>'
         f'<circle cx="30" cy="92" r="12" fill="{color}"/>'
         f'<text x="30" y="96" text-anchor="middle" font-size="9" fill="white" font-weight="700">{_fmt_num(v, places=0)}</text>'
-        f'<text x="30" y="108" text-anchor="middle" font-size="9" fill="#64748b">{_esc(label)}{_esc(suffix)}</text>'
+        f'<text x="30" y="108" text-anchor="middle" font-size="9" fill="#94a3b8">{_esc(label)}{_esc(suffix)}</text>'
         "</svg>"
     )
 
@@ -1093,6 +1193,159 @@ def _code_gen_status_breakdown(
 
 
 # --------------------------------------------------------------------- #
+# Executive summary + rankings helpers                                  #
+# --------------------------------------------------------------------- #
+
+
+def _exec_summary_html(
+    ranking: list[dict[str, Any]],
+    suites: list[dict[str, Any]],
+) -> str:
+    """Render a 4-card executive-summary section derived from ranking data."""
+    if not ranking:
+        return ""
+    cards: list[str] = []
+
+    # Card 1: Best Overall Balance
+    top = ranking[0]
+    reason_bits: list[str] = []
+    if top.get("grounding_rate") is not None:
+        reason_bits.append(f"Grounding {_fmt_pct(top['grounding_rate'])}")
+    if top.get("structured_rate") is not None:
+        reason_bits.append(f"Structured {_fmt_pct(top['structured_rate'])}")
+    if top.get("avg_tokens_per_s") is not None:
+        reason_bits.append(f"{_fmt_num(top['avg_tokens_per_s'])} tok/s")
+    detail1 = " · ".join(reason_bits) if reason_bits else "Top combined score across all suites"
+    cards.append(
+        '<div class="exec-card">'
+        '<div class="ec-icon">🏆</div>'
+        '<div class="ec-title">Best Overall Balance</div>'
+        f'<div class="ec-value">{_esc(top["model"])}</div>'
+        f'<div class="ec-detail">{_esc(detail1)}</div>'
+        '</div>'
+    )
+
+    # Card 2: Strongest single-suite pass rate
+    best_suite_model: str | None = None
+    best_suite_name: str | None = None
+    best_suite_rate: float = -1.0
+    for suite in suites:
+        suite_name = str(suite.get("suite") or "")
+        for model in suite.get("models") or []:
+            rate = model.get("pass_rate")
+            if rate is not None and float(rate) > best_suite_rate:
+                best_suite_rate = float(rate)
+                best_suite_model = str(model.get("model") or "?")
+                best_suite_name = suite_name
+    if best_suite_model:
+        cards.append(
+            '<div class="exec-card">'
+            '<div class="ec-icon">🎯</div>'
+            f'<div class="ec-title">Strongest — {_esc(best_suite_name or "suite")}</div>'
+            f'<div class="ec-value">{_esc(best_suite_model)}</div>'
+            f'<div class="ec-detail">{_fmt_pct(best_suite_rate)} pass rate</div>'
+            '</div>'
+        )
+
+    # Card 3: Highest throughput
+    best_tps_model: str | None = None
+    best_tps: float = -1.0
+    for r in ranking:
+        tps = r.get("avg_tokens_per_s")
+        if tps is not None and float(tps) > best_tps:
+            best_tps = float(tps)
+            best_tps_model = str(r["model"])
+    if best_tps_model:
+        cards.append(
+            '<div class="exec-card">'
+            '<div class="ec-icon">⚡</div>'
+            '<div class="ec-title">Highest Throughput</div>'
+            f'<div class="ec-value">{_esc(best_tps_model)}</div>'
+            f'<div class="ec-detail">{_fmt_num(best_tps)} tok/s average decode</div>'
+            '</div>'
+        )
+
+    # Card 4: Key Finding — context degradation if available, otherwise score gap
+    lc_finding: str | None = None
+    for suite in suites:
+        if _canonical_suite_key(str(suite.get("suite") or "")) == "long_context_retrieval":
+            for model in suite.get("models") or []:
+                ffl = model.get("first_failure_length")
+                if ffl:
+                    lc_finding = (
+                        f"Context Degradation — {_esc(str(model.get('model') or '?'))} "
+                        f"degrades at {int(ffl):,} tokens"
+                    )
+                    break
+            if lc_finding:
+                break
+    if not lc_finding:
+        if len(ranking) >= 2:
+            score_gap = float(ranking[0]["overall_score"]) - float(ranking[-1]["overall_score"])
+            lc_finding = (
+                f"{_esc(ranking[0]['model'])} leads by "
+                f"{score_gap * 100:.1f} score points over "
+                f"{_esc(ranking[-1]['model'])}"
+            )
+        else:
+            lc_finding = "Single model evaluated — no comparison baseline"
+    cards.append(
+        '<div class="exec-card">'
+        '<div class="ec-icon">⚠️</div>'
+        '<div class="ec-title">Key Finding</div>'
+        f'<div class="ec-value ec-detail">{lc_finding}</div>'
+        '</div>'
+    )
+
+    return (
+        '<section class="exec-summary">'
+        '<h2>Executive Summary</h2>'
+        '<div class="exec-grid">' + "".join(cards) + '</div>'
+        '</section>'
+    )
+
+
+def _overall_rankings_cards_html(ranking: list[dict[str, Any]]) -> str:
+    """Render numbered ranking cards with score and stat bullets."""
+    if not ranking:
+        return ""
+    rank_class = {1: "rank-1", 2: "rank-2", 3: "rank-3"}
+    rank_label = {1: "🥇 #1 — Gold", 2: "🥈 #2 — Silver", 3: "🥉 #3 — Bronze"}
+    parts: list[str] = []
+    parts.append('<section class="rankings-section">')
+    parts.append('<h2>Overall Rankings</h2>')
+    parts.append('<div class="rankings-grid">')
+    for i, row in enumerate(ranking, start=1):
+        score = round(float(row["overall_score"]) * 100)
+        bullets: list[str] = []
+        if row.get("grounding_rate") is not None:
+            bullets.append(f"Grounding: {_fmt_pct(row['grounding_rate'])}")
+        if row.get("structured_rate") is not None:
+            bullets.append(f"Structured JSON: {_fmt_pct(row['structured_rate'])}")
+        if row.get("avg_ttft_ms") is not None:
+            bullets.append(f"TTFT: {_fmt_num(row['avg_ttft_ms'])} ms")
+        if row.get("avg_tokens_per_s") is not None:
+            bullets.append(f"Throughput: {_fmt_num(row['avg_tokens_per_s'])} tok/s")
+        bullets = bullets[:3]
+        if not bullets:
+            bullets = ["No detailed metrics available"]
+        li_items = "".join(f'<li>{_esc(b)}</li>' for b in bullets)
+        medal = rank_label.get(i, f"#{i}")
+        css_class = rank_class.get(i, "")
+        parts.append(
+            f'<div class="ranking-card {css_class}">'
+            f'<div class="rc-medal">{medal}</div>'
+            f'<div class="rc-name"><code>{_esc(row["model"])}</code></div>'
+            f'<div class="rc-score">OVERALL SCORE {score}/100</div>'
+            f'<ul class="rc-bullets">{li_items}</ul>'
+            '</div>'
+        )
+    parts.append('</div>')
+    parts.append('</section>')
+    return "".join(parts)
+
+
+# --------------------------------------------------------------------- #
 # Canonical (bundle-level) report                                       #
 # --------------------------------------------------------------------- #
 
@@ -1132,7 +1385,10 @@ def render_canonical_report_html(
     # Hero banner
     # ------------------------------------------------------------- #
     body.append('<section class="hero">')
+    body.append('<div class="hero-brand"><span class="nv">NVIDIA</span> | OpenClaw</div>')
     body.append('<div class="hero-inner">')
+    body.append('<div class="hero-main">')
+    body.append('<div class="hero-breadcrumb">DGX SPARK BENCHMARK</div>')
     body.append(f"<h1>{_esc(title)}</h1>")
     if request:
         body.append(f'<p class="tagline">{_esc(request)}</p>')
@@ -1157,6 +1413,7 @@ def render_canonical_report_html(
             f"<code>{_esc(', '.join(selected_models_list))}</code></span>"
         )
     body.append("</div>")
+    body.append("</div>")  # /.hero-main
     if winner_name and ranking:
         winner_row = ranking[0]
         reason_bits: list[str] = []
@@ -1175,12 +1432,30 @@ def render_canonical_report_html(
                 f"{_fmt_num(winner_row['avg_tokens_per_s'])} tok/s"
             )
         reason = "; ".join(reason_bits) if reason_bits else "balanced result across all suites"
+        kpi_chips: list[str] = []
+        if winner_row.get("grounding_rate") is not None:
+            kpi_chips.append(
+                f'<span class="kpi-chip">Grounding {_fmt_pct(winner_row["grounding_rate"])}</span>'
+            )
+        if winner_row.get("avg_tokens_per_s") is not None:
+            kpi_chips.append(
+                f'<span class="kpi-chip">{_fmt_num(winner_row["avg_tokens_per_s"])} tok/s</span>'
+            )
+        if winner_row.get("avg_ttft_ms") is not None:
+            kpi_chips.append(
+                f'<span class="kpi-chip">TTFT {_fmt_num(winner_row["avg_ttft_ms"])} ms</span>'
+            )
+        kpi_html = (
+            f'<div class="kpi-chips">{"".join(kpi_chips)}</div>' if kpi_chips else ""
+        )
         body.append('<div class="winner-card">')
         body.append('<span class="label">Recommended pick</span>')
         body.append(f'<div class="name"><code>{_esc(winner_name)}</code></div>')
         body.append(f'<div class="reason">{_esc(reason)}</div>')
+        if kpi_html:
+            body.append(kpi_html)
         body.append("</div>")
-    body.append("</div>")
+    body.append("</div>")  # /.hero-inner
     body.append("</section>")
 
     # ------------------------------------------------------------- #
@@ -1189,6 +1464,11 @@ def render_canonical_report_html(
     body.append(_stat_tiles_html(aggregate, suites, runs, ranking))
 
     body.append('<div class="container">')
+
+    # ------------------------------------------------------------- #
+    # Executive Summary (4-card insight strip)
+    # ------------------------------------------------------------- #
+    body.append(_exec_summary_html(ranking, suites))
 
     # ------------------------------------------------------------- #
     # Verdict + recommendation card
@@ -1251,6 +1531,8 @@ def render_canonical_report_html(
         body.append("<h3>Overall score</h3>")
         body.append(_svg_bars(bar_rows, max_value=1.0))
         body.append("</div>")
+
+        body.append(_overall_rankings_cards_html(ranking))
 
     # ------------------------------------------------------------- #
     # Per-suite dashboard cards (one per suite, suite-specific charts)
@@ -1936,11 +2218,15 @@ def render_custom_summary_html(summary: dict[str, Any]) -> str:
     # ------------------------------------------------------------- #
     # Hero — cyan-tinted gradient to distinguish from canonical
     # ------------------------------------------------------------- #
-    body.append('<section class="hero" style="background:'
-                'radial-gradient(circle at 15% 20%, #06b6d4 0%, transparent 55%),'
-                'radial-gradient(circle at 85% 30%, #6366f1 0%, transparent 55%),'
-                'linear-gradient(135deg, #0e7490 0%, #1e1b4b 50%, #312e81 100%);">')
+    body.append(
+        '<section class="hero" style="background:'
+        'linear-gradient(135deg, #060d18 0%, #071520 40%, #061a1a 100%);'
+        'border-bottom: 1px solid rgba(34,211,238,0.3);">'
+    )
+    body.append('<div class="hero-brand"><span class="nv">NVIDIA</span> | OpenClaw</div>')
     body.append('<div class="hero-inner">')
+    body.append('<div class="hero-main">')
+    body.append('<div class="hero-breadcrumb">DGX SPARK BENCHMARK — CUSTOM RUN</div>')
     body.append(f"<h1>{_esc(title)}</h1>")
     if summary.get("description"):
         body.append(f'<p class="tagline">{_esc(summary["description"])}</p>')
@@ -1957,8 +2243,9 @@ def render_custom_summary_html(summary: dict[str, Any]) -> str:
     body.append(f"<span><strong>Tasks:</strong> {int(summary.get('task_count') or 0)}</span>")
     body.append(f"<span><strong>Models:</strong> {len(per_model)}</span>")
     body.append(f"<span><strong>Generated:</strong> {_esc(_now_utc_iso())}</span>")
-    body.append("</div>")
-    body.append("</div>")
+    body.append("</div>")   # /.hero-meta
+    body.append("</div>")   # /.hero-main
+    body.append("</div>")   # /.hero-inner
     body.append("</section>")
 
     # ------------------------------------------------------------- #
