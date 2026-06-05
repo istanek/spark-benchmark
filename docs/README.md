@@ -50,8 +50,10 @@ vars (no config edits) and select a cloud model by tag:
 export OLLAMA_HOST=https://ollama.com
 export OLLAMA_API_KEY=sk-...          # https://ollama.com/settings/keys
 
-# ad-hoc one-prompt comparison
-spark-bench quick "Summarize the CAP theorem." --models gpt-oss:120b-cloud
+# ad-hoc one-prompt comparison (run from the repo dir)
+spark-bench quick "Summarize the CAP theorem." \
+  --experiment configs/experiments/spark-ollama-baseline.yaml \
+  --platform spark --models gpt-oss:120b-cloud
 
 # a built-in suite against a specific cloud model (--model is repeatable)
 spark-bench run --experiment configs/experiments/spark-ollama-baseline.yaml \

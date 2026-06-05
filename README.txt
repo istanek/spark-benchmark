@@ -67,7 +67,10 @@ model in turn, runs every test, and gives you a side-by-side table.
   Then pick a cloud model by its tag. A few ways:
 
       # ad-hoc: one prompt, compare against a cloud model
+      # (run from the repo dir, or give --experiment an absolute path)
       spark-bench quick "Summarize the CAP theorem." \
+                        --experiment configs/experiments/spark-ollama-baseline.yaml \
+                        --platform spark \
                         --models gpt-oss:120b-cloud
 
       # a built-in suite against a specific cloud model
