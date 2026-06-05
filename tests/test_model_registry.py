@@ -278,6 +278,32 @@ def test_ollama_auth_headers_from_env() -> None:
         _restore_env(saved)
 
 
+def test_synthesize_model_config_cloud_source() -> None:
+    """A DetectedOllamaModel with source='cloud' gets ollama-cloud config."""
+    det = DetectedOllamaModel(
+        tag="nemotron3-ultra:253b-cloud",
+        family="nemotron",
+        source="cloud",
+    )
+    cfg = synthesize_model_config(det)
+    assert cfg.source == "ollama-cloud"
+    assert cfg.quantization == "cloud"
+    assert any("Ollama Cloud" in n for n in cfg.notes)
+    assert any("no local GPU telemetry" in n for n in cfg.notes)
+
+
+def test_classify_detected_propagates_is_cloud() -> None:
+    """Cloud-source detected models get is_cloud=True in OllamaModelInfo."""
+    local_det = DetectedOllamaModel(tag="qwen3.6:35b", family="qwen", source="local")
+    cloud_det = DetectedOllamaModel(tag="nemotron3-ultra:253b-cloud", family="nemotron", source="cloud")
+    classified = classify_detected([], [local_det, cloud_det])
+    by_tag = {item.tag: item for item in classified}
+    assert by_tag["qwen3.6:35b"].is_cloud is False
+    assert by_tag["nemotron3-ultra:253b-cloud"].is_cloud is True
+    assert by_tag["nemotron3-ultra:253b-cloud"].config is not None
+    assert by_tag["nemotron3-ultra:253b-cloud"].config.source == "ollama-cloud"
+
+
 def test_find_config_synthesizes_cloud_tag() -> None:
     cfg = find_config_by_name_or_tag("gpt-oss:120b-cloud", configs=[], classified=[])
     assert cfg is not None

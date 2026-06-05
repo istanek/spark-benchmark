@@ -45,6 +45,17 @@ from spark_benchmark.runners.registry import build_backend
 DEFAULT_EXPERIMENT = "spark-ollama-baseline.yaml"
 DEFAULT_PLATFORM = "spark"
 
+
+def _model_label(item: "OllamaModelInfo") -> str:
+    """Return a human-readable label for a model picker entry."""
+    if not item.has_config:
+        reason = item.disable_reason or "no config"
+        return f"{item.tag}  ({reason})"
+    if item.auto_detected:
+        suffix = "cloud" if item.is_cloud else "auto"
+        return f"{item.tag}  ({suffix})"
+    return f"{item.display_name}  [{item.tag}]"
+
 SUITE_REGISTRY: dict[str, dict[str, str]] = {
     "openclaw_speed": {
         "label": "OpenClaw-like speed probe (TTFT + decode)",
@@ -730,7 +741,7 @@ class TUIApp:
             return
         for item in classified:
             if item.has_config and item.auto_detected:
-                status = "ready (auto)"
+                status = "ready (cloud)" if item.is_cloud else "ready (auto)"
             elif item.has_config and item.tag in detected_tags:
                 status = "ready"
             elif item.has_config:
@@ -801,15 +812,10 @@ class TUIApp:
         disabled: set[int] = set()
         defaults: set[int] = set()
         for idx, item in enumerate(classified):
-            if item.has_config and item.auto_detected:
-                model_labels.append(f"{item.tag}  (auto)")
-                defaults.add(idx)
-            elif item.has_config:
-                model_labels.append(f"{item.display_name}  [{item.tag}]")
+            model_labels.append(_model_label(item))
+            if item.has_config:
                 defaults.add(idx)
             else:
-                reason = item.disable_reason or "no YAML config"
-                model_labels.append(f"{item.tag}  ({reason})")
                 disabled.add(idx)
 
         picked_models = _curses_multiselect(
@@ -990,16 +996,10 @@ class TUIApp:
         disabled: set[int] = set()
         defaults: set[int] = set()
         for idx, item in enumerate(resolved.classified):
+            model_labels.append(_model_label(item))
             if not item.has_config:
-                reason = item.disable_reason or "no config"
-                model_labels.append(f"{item.tag}  ({reason})")
                 disabled.add(idx)
-                continue
-            if item.auto_detected:
-                model_labels.append(f"{item.tag}  (auto)")
-            else:
-                model_labels.append(f"{item.display_name}  [{item.tag}]")
-            if suite_defaults is None or idx in suite_defaults:
+            elif suite_defaults is None or idx in suite_defaults:
                 defaults.add(idx)
 
         picked = _curses_multiselect(
@@ -1157,16 +1157,11 @@ class TUIApp:
         disabled: set[int] = set()
         defaults: set[int] = set()
         for idx, item in enumerate(resolved.classified):
+            model_labels.append(_model_label(item))
             if not item.has_config:
-                reason = item.disable_reason or "no config"
-                model_labels.append(f"{item.tag}  ({reason})")
                 disabled.add(idx)
-                continue
-            if item.auto_detected:
-                model_labels.append(f"{item.tag}  (auto)")
             else:
-                model_labels.append(f"{item.display_name}  [{item.tag}]")
-            defaults.add(idx)
+                defaults.add(idx)
 
         picked = _curses_multiselect(
             stdscr,

@@ -41,6 +41,8 @@ class DetectedOllamaModel:
     families: tuple[str, ...] = ()
     parameter_size: str = ""
     quantization_level: str = ""
+    source: str = "local"
+    """'local' for models pulled to the local Ollama, 'cloud' for Ollama Cloud."""
 
 
 @dataclass
@@ -49,6 +51,8 @@ class OllamaModelInfo:
     config: ModelConfig | None
     auto_detected: bool = False
     disable_reason: str | None = None
+    is_cloud: bool = False
+    """True when this model was detected from Ollama Cloud (not the local daemon)."""
 
     @property
     def has_config(self) -> bool:
@@ -92,10 +96,26 @@ def synthesize_model_config(detected: DetectedOllamaModel) -> ModelConfig:
     """Build a ``ModelConfig`` for an Ollama tag that has no curated YAML.
 
     Defaults are deliberately conservative: 131072 ctx (Ollama default for
-    most chat models), Ollama-default quantization, generic ``ollama-local``
-    source, and an explicit note so reports/manifests can flag the run as
-    not-fully-curated.
+    most chat models), Ollama-default quantization, and an explicit note so
+    reports/manifests can flag the run as not-fully-curated.
+
+    Cloud models (``detected.source == "cloud"``) are tagged ``source="ollama-cloud"``
+    and carry a no-local-telemetry note, mirroring ``synthesize_cloud_model_config``.
     """
+    if detected.source == "cloud":
+        return ModelConfig(
+            name=slugify_tag(detected.tag),
+            family=detected.family or (detected.families[0] if detected.families else "cloud"),
+            revision=detected.tag,
+            quantization=detected.quantization_level or "cloud",
+            source="ollama-cloud",
+            context_length=131072,
+            artifact_path=detected.tag,
+            notes=[
+                "auto-detected from Ollama Cloud (no YAML config)",
+                "no local GPU telemetry",
+            ],
+        )
     return ModelConfig(
         name=slugify_tag(detected.tag),
         family=detected.family or (detected.families[0] if detected.families else "unknown"),
@@ -131,42 +151,72 @@ def synthesize_cloud_model_config(tag: str) -> ModelConfig:
 def detect_ollama_models(
     backend_config: BackendConfig, *, timeout: float = 5.0
 ) -> list[DetectedOllamaModel]:
-    """Probe ``backend_config.options['endpoint']`` for `/api/tags`.
+    """Probe Ollama for available models, combining local and cloud sources.
 
-    Returns ``[]`` on any error (no endpoint, network failure, parse failure)
-    so callers can use this as a non-fatal probe.
+    Probes two endpoints independently and merges the results:
+
+    1. **Local Ollama** — always ``http://localhost:11434`` (the Spark daemon),
+       no auth. Models here are tagged ``source="local"``.
+    2. **Ollama Cloud** — ``https://ollama.com``, only when ``$OLLAMA_API_KEY``
+       is set in the environment. Models here are tagged ``source="cloud"``.
+
+    When ``$OLLAMA_HOST`` is set to a non-cloud host (e.g. a remote Ollama
+    instance), it replaces the local probe target — the cloud probe still runs
+    independently if ``$OLLAMA_API_KEY`` is present.
+
+    Duplicate tags are deduplicated: a tag that exists both locally and in the
+    cloud catalogue is kept with ``source="local"`` (local always wins, because
+    local runs are free and produce GPU telemetry).
+
+    Returns ``[]`` when neither probe succeeds.
     """
-    # Honor $OLLAMA_HOST / $OLLAMA_API_KEY so detection works against Ollama
-    # Cloud too, not just the local endpoint from the YAML.
-    from spark_benchmark.runners.ollama import ollama_auth_headers, resolve_ollama_base
+    import os
 
-    base = resolve_ollama_base(backend_config.options)
-    if not base:
-        return []
-    tags_url = base + "/api/tags"
-    try:
-        request = urllib.request.Request(
-            tags_url, headers=ollama_auth_headers(), method="GET"
-        )
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.load(response)
-    except Exception:
-        return []
+    from spark_benchmark.runners.ollama import (
+        DEFAULT_ENDPOINT,
+        ollama_auth_headers,
+        resolve_ollama_base,
+    )
+
     detected: list[DetectedOllamaModel] = []
-    for item in payload.get("models", []):
-        name = item.get("name")
-        if not name:
-            continue
-        details = item.get("details") or {}
-        detected.append(
-            DetectedOllamaModel(
-                tag=str(name),
-                family=str(details.get("family") or ""),
-                families=tuple(str(f) for f in (details.get("families") or [])),
-                parameter_size=str(details.get("parameter_size") or ""),
-                quantization_level=str(details.get("quantization_level") or ""),
+    seen_tags: set[str] = set()
+
+    def _probe_endpoint(base: str, headers: dict[str, str], source: str) -> None:
+        tags_url = base + "/api/tags"
+        try:
+            request = urllib.request.Request(tags_url, headers=headers, method="GET")
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                payload = json.load(response)
+        except Exception:
+            return
+        for item in payload.get("models", []):
+            name = item.get("name")
+            if not name or name in seen_tags:
+                continue
+            seen_tags.add(name)
+            details = item.get("details") or {}
+            detected.append(
+                DetectedOllamaModel(
+                    tag=str(name),
+                    family=str(details.get("family") or ""),
+                    families=tuple(str(f) for f in (details.get("families") or [])),
+                    parameter_size=str(details.get("parameter_size") or ""),
+                    quantization_level=str(details.get("quantization_level") or ""),
+                    source=source,
+                )
             )
-        )
+
+    # Probe 1: local / configured endpoint ($OLLAMA_HOST overrides localhost)
+    local_base = resolve_ollama_base(backend_config.options)
+    _probe_endpoint(local_base, {}, "local")
+
+    # Probe 2: Ollama Cloud — only when API key is present and the configured
+    # endpoint isn't already ollama.com (avoids a redundant second request)
+    api_key = os.environ.get("OLLAMA_API_KEY", "").strip()
+    cloud_base = "https://ollama.com"
+    if api_key and local_base.rstrip("/") != cloud_base:
+        _probe_endpoint(cloud_base, ollama_auth_headers(), "cloud")
+
     return detected
 
 
@@ -193,15 +243,17 @@ def classify_detected(
     for cfg in model_configs:
         tag = cfg.artifact_path or cfg.revision
         if tag in detected_by_tag:
-            items.append(OllamaModelInfo(tag=tag, config=cfg))
+            det = detected_by_tag[tag]
+            items.append(OllamaModelInfo(tag=tag, config=cfg, is_cloud=det.source == "cloud"))
             matched_tags.add(tag)
     for tag in sorted(detected_by_tag.keys() - matched_tags):
         info = detected_by_tag[tag]
+        is_cloud_model = info.source == "cloud"
         if is_vision_model(info):
-            items.append(OllamaModelInfo(tag=tag, config=None, disable_reason="vision model"))
+            items.append(OllamaModelInfo(tag=tag, config=None, disable_reason="vision model", is_cloud=is_cloud_model))
         elif is_embedding_model(info):
             items.append(
-                OllamaModelInfo(tag=tag, config=None, disable_reason="embedding model")
+                OllamaModelInfo(tag=tag, config=None, disable_reason="embedding model", is_cloud=is_cloud_model)
             )
         else:
             items.append(
@@ -209,6 +261,7 @@ def classify_detected(
                     tag=tag,
                     config=synthesize_model_config(info),
                     auto_detected=True,
+                    is_cloud=is_cloud_model,
                 )
             )
     return items
