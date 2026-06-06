@@ -382,10 +382,18 @@ def test_model_config_base_model_set() -> None:
     assert cfg.base_model == "llama-3.3-70b"
 
 
-def test_existing_model_yaml_still_loads_without_base_model() -> None:
+def test_model_config_loads_without_base_model() -> None:
+    # base_model is optional — a minimal YAML without it must still parse.
     import yaml
 
-    raw = (REPO_ROOT / "configs" / "models" / "qwen-3.6.yaml").read_text(encoding="utf-8")
+    raw = """
+name: test-model
+family: test
+revision: test:7b
+quantization: Q4_K_M
+source: ollama-local
+context_length: 32768
+"""
     cfg = ModelConfig.model_validate(yaml.safe_load(raw))
     assert cfg.base_model is None
 
