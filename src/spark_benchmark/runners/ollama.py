@@ -56,12 +56,28 @@ def is_cloud_endpoint() -> bool:
     return "ollama.com" in os.environ.get(ENV_HOST, "").lower()
 
 
+def model_is_cloud(model: ModelConfig | None) -> bool:
+    """True when *model* should be routed to Ollama Cloud rather than localhost.
+
+    A model is cloud-routed when its ``source`` is ``ollama-cloud`` or its
+    Ollama tag carries the ``-cloud`` suffix (the convention Ollama Cloud uses,
+    e.g. ``gpt-oss:120b-cloud``).
+    """
+    if model is None:
+        return False
+    if model.source == "ollama-cloud":
+        return True
+    tag = model.artifact_path or model.revision or ""
+    return tag.endswith("-cloud")
+
+
 class OllamaAdapter:
     def __init__(self, config: BackendConfig) -> None:
         self.config = config
         self.model: ModelConfig | None = None
-        # $OLLAMA_HOST (if set) wins over the configured endpoint so a cloud
-        # run needs no YAML edits — just the two env vars.
+        # Endpoint is resolved per-model in `_base_for_model` so a single run
+        # can mix local and cloud models. `self.endpoint` is kept as a default
+        # for callers that read it before a model is loaded.
         self.endpoint = resolve_ollama_base(config.options) + "/api/generate"
         self.timeout_s = float(config.options.get("request_timeout_s") or DEFAULT_TIMEOUT_S)
         self.last_metrics = InferenceMetrics(
@@ -73,9 +89,44 @@ class OllamaAdapter:
         self.model = model_config
         self.last_metrics.quantization = model_config.quantization
 
+    def _base_for_model(self) -> str:
+        """Base URL (scheme://host[:port]) for the currently loaded model.
+
+        Routing is per-model so local and cloud models can be benchmarked in
+        the same run:
+
+        - **Cloud model** (``source == "ollama-cloud"`` or a ``-cloud`` tag) →
+          ``https://ollama.com`` (or an explicit cloud ``$OLLAMA_HOST``).
+        - **Local model** → the configured backend endpoint / localhost. A
+          cloud ``$OLLAMA_HOST`` is deliberately ignored here so a local model
+          is never sent to ollama.com; a non-cloud custom ``$OLLAMA_HOST``
+          (e.g. a private remote Ollama) is still honoured.
+        """
+        if model_is_cloud(self.model):
+            host = os.environ.get(ENV_HOST, "").strip()
+            if host and "ollama.com" in host.lower():
+                return (host if host.startswith(("http://", "https://")) else "https://" + host).rstrip("/")
+            return "https://ollama.com"
+        # Local model: configured endpoint, ignoring a cloud $OLLAMA_HOST.
+        base = str(self.config.options.get("endpoint") or DEFAULT_ENDPOINT).rsplit("/api/", 1)[0]
+        env_host = os.environ.get(ENV_HOST, "").strip()
+        if env_host and "ollama.com" not in env_host.lower():
+            base = (env_host if env_host.startswith(("http://", "https://")) else "https://" + env_host).rstrip("/")
+        return base
+
+    def _generate_endpoint(self) -> str:
+        return self._base_for_model() + "/api/generate"
+
     def _headers(self) -> dict[str, str]:
-        """JSON content-type plus a Bearer token when $OLLAMA_API_KEY is set."""
-        return {"Content-Type": "application/json", **ollama_auth_headers()}
+        """JSON content-type, plus a Bearer token only for cloud-routed models.
+
+        The API key is never sent to a local endpoint — both to avoid leaking
+        it and because the local daemon doesn't expect it.
+        """
+        headers = {"Content-Type": "application/json"}
+        if model_is_cloud(self.model):
+            headers.update(ollama_auth_headers())
+        return headers
 
     def _model_tag(self) -> str:
         if self.model is None:
@@ -109,8 +160,9 @@ class OllamaAdapter:
     def generate(self, prompt: str, params: SamplingConfig) -> GenerationResult:
         payload = self._build_payload(prompt, params)
         body = json.dumps(payload).encode("utf-8")
+        endpoint = self._generate_endpoint()
         request = urllib.request.Request(
-            self.endpoint,
+            endpoint,
             data=body,
             headers=self._headers(),
             method="POST",
@@ -122,10 +174,10 @@ class OllamaAdapter:
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(
-                f"Ollama HTTP {exc.code} from {self.endpoint}: {detail}"
+                f"Ollama HTTP {exc.code} from {endpoint}: {detail}"
             ) from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"Ollama request failed to {self.endpoint}: {exc.reason}") from exc
+            raise RuntimeError(f"Ollama request failed to {endpoint}: {exc.reason}") from exc
         elapsed = time.perf_counter() - started
 
         data = json.loads(raw_text)
@@ -161,7 +213,7 @@ class OllamaAdapter:
             finish_reason=finish_reason,
             metrics=self.last_metrics,
             raw={
-                "endpoint": self.endpoint,
+                "endpoint": endpoint,
                 "request": payload,
                 "response": data,
                 "wall_time_s": elapsed,
@@ -172,9 +224,8 @@ class OllamaAdapter:
         return self.last_metrics
 
     def _ps_endpoint(self) -> str:
-        # self.endpoint is the /api/generate URL; derive the sibling /api/ps.
-        base = self.endpoint.rsplit("/api/", 1)[0]
-        return f"{base}/api/ps"
+        # Route /api/ps to the same host as the current model's generate call.
+        return f"{self._base_for_model()}/api/ps"
 
     def memory_snapshot(self) -> dict[str, Any] | None:
         """Best-effort memory for the loaded model via Ollama ``/api/ps``.
@@ -192,7 +243,7 @@ class OllamaAdapter:
         except RuntimeError:
             return None
         request = urllib.request.Request(
-            self._ps_endpoint(), headers=ollama_auth_headers(), method="GET"
+            self._ps_endpoint(), headers=self._headers(), method="GET"
         )
         try:
             with urllib.request.urlopen(request, timeout=15.0) as response:
@@ -229,7 +280,7 @@ class OllamaAdapter:
             return
         payload = json.dumps({"model": tag, "keep_alive": 0}).encode("utf-8")
         request = urllib.request.Request(
-            self.endpoint,
+            self._generate_endpoint(),
             data=payload,
             headers=self._headers(),
             method="POST",

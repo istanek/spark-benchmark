@@ -323,6 +323,79 @@ def test_synthesize_cloud_model_config_fields() -> None:
     assert any("no local GPU telemetry" in n for n in cfg.notes)
 
 
+# --------------------------------------------------------------------- #
+# Per-model endpoint routing (OllamaAdapter)                            #
+# --------------------------------------------------------------------- #
+
+
+def test_model_is_cloud_detection() -> None:
+    from spark_benchmark.runners.ollama import model_is_cloud
+
+    local = _make_model("qwen-3.6", "qwen3.6:35b")
+    cloud_by_source = ModelConfig(
+        name="nemo-ultra", family="nemotron", revision="nemotron3-ultra:253b-cloud",
+        quantization="cloud", source="ollama-cloud", context_length=131072,
+        artifact_path="nemotron3-ultra:253b-cloud",
+    )
+    cloud_by_tag = _make_model("gpt-oss", "gpt-oss:120b-cloud")
+    assert model_is_cloud(None) is False
+    assert model_is_cloud(local) is False
+    assert model_is_cloud(cloud_by_source) is True
+    assert model_is_cloud(cloud_by_tag) is True
+
+
+def test_adapter_routes_local_model_to_localhost_even_with_cloud_host() -> None:
+    """A local model must hit localhost even when OLLAMA_HOST=ollama.com."""
+    from spark_benchmark.runners.ollama import OllamaAdapter
+
+    saved = _clear_ollama_env()
+    try:
+        os.environ["OLLAMA_HOST"] = "https://ollama.com"
+        os.environ["OLLAMA_API_KEY"] = "sk-test"
+        adapter = OllamaAdapter(_make_backend())
+        adapter.load_model(_make_model("qwen-3.6", "qwen3.6:35b"))
+        endpoint = adapter._generate_endpoint()
+        assert endpoint == "http://localhost:11434/api/generate"
+        # No auth header leaked to the local endpoint
+        assert "Authorization" not in adapter._headers()
+    finally:
+        _restore_env(saved)
+
+
+def test_adapter_routes_cloud_model_to_ollama_com() -> None:
+    """A cloud model routes to ollama.com with the auth header."""
+    from spark_benchmark.runners.ollama import OllamaAdapter
+
+    saved = _clear_ollama_env()
+    try:
+        os.environ["OLLAMA_API_KEY"] = "sk-test"
+        adapter = OllamaAdapter(_make_backend())
+        cloud = ModelConfig(
+            name="nemo-ultra", family="nemotron", revision="nemotron3-ultra:253b-cloud",
+            quantization="cloud", source="ollama-cloud", context_length=131072,
+            artifact_path="nemotron3-ultra:253b-cloud",
+        )
+        adapter.load_model(cloud)
+        assert adapter._generate_endpoint() == "https://ollama.com/api/generate"
+        assert adapter._headers().get("Authorization") == "Bearer sk-test"
+    finally:
+        _restore_env(saved)
+
+
+def test_adapter_respects_private_remote_host_for_local_model() -> None:
+    """A non-cloud custom OLLAMA_HOST is honoured for local models."""
+    from spark_benchmark.runners.ollama import OllamaAdapter
+
+    saved = _clear_ollama_env()
+    try:
+        os.environ["OLLAMA_HOST"] = "http://192.168.1.50:11434"
+        adapter = OllamaAdapter(_make_backend())
+        adapter.load_model(_make_model("qwen-3.6", "qwen3.6:35b"))
+        assert adapter._generate_endpoint() == "http://192.168.1.50:11434/api/generate"
+    finally:
+        _restore_env(saved)
+
+
 if __name__ == "__main__":
     import sys
 
