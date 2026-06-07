@@ -3,6 +3,7 @@ from __future__ import annotations
 import curses
 import io
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -100,6 +101,7 @@ MENU_ITEMS: list[tuple[str, str]] = [
     ("suites", "Suites"),
     ("info", "Info"),
     ("chat", "Chat"),
+    ("cloud", "Cloud"),
     ("refresh", "Refresh"),
     ("quit", "Quit"),
 ]
@@ -540,6 +542,8 @@ def _curses_singleselect(
 @dataclass
 class TUIApp:
     ctx: ShellContext
+    _experiment_path: Path | None = field(default=None, repr=False)
+    _platform_name: str | None = field(default=None, repr=False)
     cursor: int = 0
     log_lines: list[str] = field(default_factory=list)
     scroll_offset: int = 0  # 0 = follow bottom; >0 = N lines back
@@ -710,7 +714,10 @@ class TUIApp:
             return
         try:
             if action == "refresh":
-                self.ctx = load_default_context()
+                self.ctx = load_default_context(
+                    experiment_path=self._experiment_path,
+                    platform_name=self._platform_name,
+                )
                 self.log("Context reloaded.")
             elif action == "models":
                 self.show_models()
@@ -726,6 +733,8 @@ class TUIApp:
                 self.do_quick(stdscr)
             elif action == "chat":
                 self.do_chat(stdscr)
+            elif action == "cloud":
+                self.do_cloud(stdscr)
         except Exception as exc:  # noqa: BLE001
             self.log_blank()
             self.log(f"ERROR: {exc}")
@@ -1334,6 +1343,48 @@ class TUIApp:
             self.log_blank()
             self.log(f"Saved as: {saved_path}")
 
+    def do_cloud(self, stdscr: Any) -> None:
+        """Prompt for an Ollama Cloud API key and re-probe models."""
+        curses.endwin()
+        print()
+        print("=== Ollama Cloud ===")
+        current_key = os.environ.get("OLLAMA_API_KEY", "")
+        if current_key:
+            masked = current_key[:6] + "..." + current_key[-4:] if len(current_key) > 10 else "***"
+            print(f"Current key : {masked}  (Enter to keep, new value to replace, '-' to clear)")
+        else:
+            print("No API key set. Enter your Ollama Cloud key (or press Enter to cancel).")
+        try:
+            raw = input("API key: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            raw = ""
+        stdscr.clear()
+        stdscr.refresh()
+        self.clear_log()
+        self.log_blank()
+        self.log("── Cloud API key ──")
+        if raw == "-":
+            os.environ.pop("OLLAMA_API_KEY", None)
+            self.log("API key cleared. Cloud models will not be detected.")
+        elif raw == "":
+            if current_key:
+                self.log("Key unchanged.")
+            else:
+                self.log("(cancelled)")
+            return
+        else:
+            os.environ["OLLAMA_API_KEY"] = raw
+            self.log("API key set.")
+        self.log("Re-probing Ollama (local + cloud)…")
+        try:
+            self.ctx = load_default_context(
+                experiment_path=self._experiment_path,
+                platform_name=self._platform_name,
+            )
+            self.log("Done — cloud models are now visible in the model picker.")
+        except Exception as exc:  # noqa: BLE001
+            self.log(f"Reload failed: {exc}")
+
     def do_chat(self, stdscr: Any) -> None:
         # Chat runs outside the TUI; the user exits it explicitly with /exit,
         # so we skip the post-action ack prompt by leaving the log empty.
@@ -1364,7 +1415,11 @@ def run_shell(
         console.print("[red]The interactive shell needs a real terminal.[/red]")
         sys.exit(1)
 
-    app = TUIApp(ctx=ctx)
+    app = TUIApp(
+        ctx=ctx,
+        _experiment_path=experiment_path,
+        _platform_name=platform_name,
+    )
     try:
         curses.wrapper(app.run)
     except KeyboardInterrupt:

@@ -30,6 +30,18 @@ def _make_model(name: str, tag: str) -> ModelConfig:
     )
 
 
+def _make_shell_context(tmp_path: Path) -> ShellContext:
+    """Minimal ShellContext that doesn't need real YAML configs on disk."""
+    real = load_default_context()
+    return ShellContext(
+        repo_root=tmp_path,
+        experiment=real.experiment,
+        platform=real.platform,
+        backend_config=real.backend_config,
+        model_configs=[],
+    )
+
+
 def _detected(tag: str, family: str = "", families: tuple[str, ...] = ()) -> DetectedOllamaModel:
     return DetectedOllamaModel(tag=tag, family=family, families=families)
 
@@ -225,6 +237,69 @@ def test_discover_custom_suites_skips_recent_pointing_at_missing_file() -> None:
             encoding="utf-8",
         )
         assert discover_custom_suites(repo) == []
+
+
+def test_do_cloud_sets_api_key(monkeypatch, tmp_path):
+    """do_cloud() stores the entered key in os.environ and reloads context."""
+    import os
+    from unittest.mock import MagicMock, patch
+
+    from spark_benchmark.shell import TUIApp
+
+    ctx = _make_shell_context(tmp_path)
+    app = TUIApp(ctx=ctx)
+
+    stdscr = MagicMock()
+    monkeypatch.delenv("OLLAMA_API_KEY", raising=False)
+    with patch("curses.endwin"):
+        with patch("builtins.input", return_value="sk-testkey123"):
+            with patch("spark_benchmark.shell.load_default_context", return_value=ctx) as mock_load:
+                app.do_cloud(stdscr)
+
+    assert os.environ.get("OLLAMA_API_KEY") == "sk-testkey123"
+    mock_load.assert_called_once()
+    os.environ.pop("OLLAMA_API_KEY", None)
+
+
+def test_do_cloud_clears_key_on_dash(monkeypatch, tmp_path):
+    """Entering '-' removes OLLAMA_API_KEY from the environment."""
+    import os
+    from unittest.mock import MagicMock, patch
+
+    from spark_benchmark.shell import TUIApp
+
+    monkeypatch.setenv("OLLAMA_API_KEY", "old-key")
+    ctx = _make_shell_context(tmp_path)
+    app = TUIApp(ctx=ctx)
+    stdscr = MagicMock()
+
+    with patch("curses.endwin"):
+        with patch("builtins.input", return_value="-"):
+            with patch("spark_benchmark.shell.load_default_context", return_value=ctx):
+                app.do_cloud(stdscr)
+
+    assert "OLLAMA_API_KEY" not in os.environ
+
+
+def test_do_cloud_empty_input_keeps_existing_key(monkeypatch, tmp_path):
+    """Empty input keeps the existing key and does NOT reload context."""
+    import os
+    from unittest.mock import MagicMock, patch
+
+    from spark_benchmark.shell import TUIApp
+
+    monkeypatch.setenv("OLLAMA_API_KEY", "existing-key")
+    ctx = _make_shell_context(tmp_path)
+    app = TUIApp(ctx=ctx)
+    stdscr = MagicMock()
+
+    with patch("curses.endwin"):
+        with patch("builtins.input", return_value=""):
+            with patch("spark_benchmark.shell.load_default_context", return_value=ctx) as mock_load:
+                app.do_cloud(stdscr)
+
+    assert os.environ.get("OLLAMA_API_KEY") == "existing-key"
+    mock_load.assert_not_called()
 
 
 def _run_all() -> int:
