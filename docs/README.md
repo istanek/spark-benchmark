@@ -65,7 +65,8 @@ token and is read from the environment only (never persisted to configs,
 manifests, or reports). `--model` accepts an explicit `-cloud` tag even when
 it isn't in the experiment YAML or `/api/tags`. Valid `--run-suite` values:
 `hallucination_grounding`, `practical_structured_output`, `code_generation`,
-`sustained_throughput`, `long_context_retrieval` (+ `_fast`). Cloud runs
+`sustained_throughput`, `long_context_retrieval` (+ `_fast`),
+`openclaw_speed`. Cloud runs
 report speed/quality but no local GPU telemetry (memory/power/temperature are
 unavailable remotely), and calls are billed over the network.
 
@@ -136,7 +137,11 @@ to it: pass-rate bars and TTFT (lower-is-better, inverted colour) for
 the speed probe, per-task pass/fail strips for the reliability suites,
 per-benchmark stacked bars for code generation, and dual-bars +
 throttle-ratio gauges + peak-temp thermometers + a tps-over-time line
-chart (with optional GPU-temp overlay) for sustained throughput. With
+chart (with optional GPU-temp overlay) for sustained throughput. When a
+quantization sweep has been aggregated (via `aggregate_quant_sweep`), the
+report also renders a per-base-model **quantization tradeoff table** —
+quality columns (Hallucination · Struct. output · Code pass@1) colour-coded
+relative to the reference variant, and speed/VRAM columns alongside. With
 `--allow-auto-detected` the picker shows every non-vision Ollama tag,
 flagged as `auto-detected`.
 

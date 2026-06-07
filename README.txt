@@ -407,6 +407,9 @@ The whole run also gets two top-level reports with the overall ranking:
                       - per-suite dashboard cards with charts tailored
                         to each test (bar charts, line charts, gauges,
                         thermometers, per-task pass/fail strips),
+                      - a quantization tradeoff table (when a quant
+                        sweep has been run) — quality and speed columns
+                        colour-coded relative to the reference variant,
                       - the verdict and recommendation.
                     Prints to PDF cleanly (gradients flatten, layout
                     survives).

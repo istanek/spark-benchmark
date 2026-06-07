@@ -649,6 +649,119 @@ def _cell_pct_html(value: float | None) -> str:
     )
 
 
+def _band_for_quality_delta(value: float | None, reference: float | None) -> str:
+    """Color band for a quality metric relative to its reference variant."""
+    if value is None:
+        return "na"
+    if reference is None:
+        return _band_for_pass_rate(value)
+    delta = float(value) - float(reference)
+    if delta >= 0:
+        return "good"
+    if delta >= -0.05:
+        return "warn"
+    return "bad"
+
+
+def _render_quant_sweep_section(quant_sweep: dict[str, Any]) -> str:
+    """Render all base-model tradeoff cards from an ``aggregate_quant_sweep`` dict."""
+    if not quant_sweep:
+        return ""
+    parts: list[str] = []
+    parts.append("<h2>Quantization tradeoff</h2>")
+    parts.append(
+        '<p class="commentary">Quality and performance across quantization levels. '
+        "Quality columns are coloured relative to the reference (baseline) variant — "
+        "green = at or above reference, amber = within 5 pp, red = &gt;5 pp below.</p>"
+    )
+    for result in quant_sweep.values():
+        parts.append(_render_quant_sweep_card(result))
+    return "".join(parts)
+
+
+def _render_quant_sweep_card(result: dict[str, Any]) -> str:
+    """Render one base-model tradeoff table as a card section."""
+    display_name = _esc(result.get("display_name") or result.get("base_model") or "?")
+    ref_name = result.get("reference_variant") or ""
+    variants: list[dict[str, Any]] = result.get("variants") or []
+
+    # Reference variant values for delta colouring
+    ref = next((v for v in variants if v["model"] == ref_name), None)
+    ref_hg = ref.get("hallucination_pass_rate") if ref else None
+    ref_pso = ref.get("structured_output_pass_rate") if ref else None
+    ref_cg = ref.get("code_pass_rate") if ref else None
+
+    def _quality_cell(value: float | None, ref_value: float | None) -> str:
+        band = _band_for_quality_delta(value, ref_value)
+        if value is None:
+            return f'<td class="cell-pct num" data-band="na">—</td>'
+        pct = max(0.0, min(1.0, value)) * 100.0
+        return (
+            f'<td class="cell-pct num" data-band="{band}" '
+            f'style="--cell-pct: {pct:.1f}%;">{_fmt_pct(value)}</td>'
+        )
+
+    def _num_cell(value: float | None, fmt: str = ".0f") -> str:
+        if value is None:
+            return '<td class="num">—</td>'
+        return f'<td class="num">{value:{fmt}}</td>'
+
+    parts: list[str] = []
+    parts.append('<section class="card accent">')
+    parts.append(
+        f"<h3>Quantization sweep — {display_name} "
+        f'<span class="badge accent">{_esc(result.get("base_model") or "")}</span></h3>'
+    )
+
+    if not variants:
+        parts.append('<p class="meta">No variants found in this run.</p>')
+        parts.append("</section>")
+        return "".join(parts)
+
+    parts.append('<div class="suite-grid" style="overflow-x: auto;">')
+    parts.append('<table aria-label="Quantization tradeoff">')
+    parts.append(
+        "<thead><tr>"
+        "<th>Variant</th>"
+        "<th>Quant</th>"
+        "<th class='num'>Hallucination</th>"
+        "<th class='num'>Struct. output</th>"
+        "<th class='num'>Code pass@1</th>"
+        "<th class='num'>TTFT (ms)</th>"
+        "<th class='num'>tok/s</th>"
+        "<th class='num'>VRAM (MB)</th>"
+        "</tr></thead><tbody>"
+    )
+
+    # Reference row first, then remaining in fixture order
+    ordered = [v for v in variants if v["model"] == ref_name] + [
+        v for v in variants if v["model"] != ref_name
+    ]
+    for v in ordered:
+        is_ref = v["model"] == ref_name
+        badge = ' <span class="badge accent">ref</span>' if is_ref else ""
+        ref_hg_v = ref_hg if not is_ref else None
+        ref_pso_v = ref_pso if not is_ref else None
+        ref_cg_v = ref_cg if not is_ref else None
+        parts.append(
+            "<tr>"
+            f"<td><code>{_esc(v['model'])}</code>{badge}</td>"
+            f"<td>{_esc(v.get('quantization') or '—')}</td>"
+            + _quality_cell(v.get("hallucination_pass_rate"), ref_hg_v)
+            + _quality_cell(v.get("structured_output_pass_rate"), ref_pso_v)
+            + _quality_cell(v.get("code_pass_rate"), ref_cg_v)
+            + _num_cell(v.get("ttft_ms"), ".0f")
+            + _num_cell(v.get("decode_tps"), ".1f")
+            + _num_cell(v.get("peak_vram_mb"), ".0f")
+            + "</tr>"
+        )
+
+    parts.append("</tbody></table>")
+    parts.append("</div>")
+    parts.append("</section>")
+    return "".join(parts)
+
+
 def _svg_heatmap(
     row_labels: list[str],
     col_labels: list[str],
@@ -1357,6 +1470,7 @@ def render_canonical_report_html(
     selected_models: Iterable[str] | None = None,
     selected_suites: Iterable[str] | None = None,
     title: str = "spark-benchmark report",
+    quant_sweep: dict[str, Any] | None = None,
 ) -> str:
     """Render a polished HTML page from an ``aggregate_runs`` dict.
 
@@ -1539,6 +1653,14 @@ def render_canonical_report_html(
     # ------------------------------------------------------------- #
     for suite in suites:
         body.append(_render_suite_block_html(suite))
+
+    # ------------------------------------------------------------- #
+    # Quantization tradeoff (optional — present when aggregate was
+    # enriched with aggregate_quant_sweep() output)
+    # ------------------------------------------------------------- #
+    effective_quant_sweep = quant_sweep or aggregate.get("quant_sweep") or {}
+    if effective_quant_sweep:
+        body.append(_render_quant_sweep_section(effective_quant_sweep))
 
     # ------------------------------------------------------------- #
     # Recent runs tail

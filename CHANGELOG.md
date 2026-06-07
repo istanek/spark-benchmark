@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-06-06
+
+### Added
+
+- **`spark_benchmark.quant_sweep` — post-processor and HTML tradeoff table.**
+  - `aggregate_quant_sweep(aggregate, model_configs, fixture)` groups
+    `aggregate_runs()` output by `base_model × quantization` using the
+    `base_model` field already present on `ModelConfig`. Suite-name version
+    suffixes (e.g. `hallucination_grounding_v1`) are stripped automatically.
+  - `check_quant_regressions(sweep, fixture)` returns warning strings when
+    any non-reference variant drops more than 5 pp below the reference
+    threshold for a suite. Only fires when `enforce: true` on the base-model
+    spec (currently `false` for all v1 entries until baselines are measured
+    on hardware).
+  - `load_quant_sweep_fixture(path)` loads and validates
+    `data/quant/quantization_sweep_v1.json` via Pydantic.
+  - `_render_quant_sweep_card` and `_render_quant_sweep_section` added to
+    `reporting_html`. The card renders a per-base-model tradeoff table
+    (Variant · Quant · Hallucination · Struct. output · Code pass@1 · TTFT ·
+    tok/s · VRAM). Quality cells are colour-coded relative to the reference
+    variant (green ≥ ref, amber within 5 pp, red > 5 pp below). Reference
+    row is sorted first; remaining variants follow fixture order.
+  - `render_canonical_report_html` now accepts `aggregate["quant_sweep"]` or
+    an explicit `quant_sweep=` kwarg — the section is omitted when absent,
+    so existing reports are unchanged.
+  - `enrich_with_quant_sweep(aggregate, model_configs, repo_root, fixture_path)`
+    added to `quant_sweep`. Detects quant-sweep runs automatically (any model
+    with `base_model` set), loads the fixture, calls `aggregate_quant_sweep`,
+    and injects the result into the aggregate dict in place. No-ops silently
+    when no model carries a `base_model` or the fixture file is missing.
+  - `cli.py` `benchmark` and `wizard` commands and `shell.py` TUI `do_run`
+    now call `enrich_with_quant_sweep` after `aggregate_runs`, so the quant
+    tradeoff table appears automatically in the HTML report whenever quant
+    variants are benchmarked together.
+- **21 new tests in `tests/test_quant_sweep.py`** covering fixture loading,
+  aggregation grouping, suite-version stripping, missing-suite → null,
+  regression enforcement (enforce=False silent, enforce=True fires, within-5pp
+  silent, null-threshold skipped), and HTML smoke tests for the card and
+  section renderers.
+
+### Fixed
+
+- `tests/test_long_context.py`: `test_existing_model_yaml_still_loads_without_base_model`
+  renamed to `test_model_config_loads_without_base_model` and switched to a
+  synthetic inline YAML so the test doesn't break when the real `qwen-3.6.yaml`
+  gains a `base_model` field (as it now has).
+
 ## [0.5.0] - 2026-06-05
 
 ### Added
@@ -46,10 +93,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `gemma-4-q4`, `nemotron-3-q8`, `nemotron-3-q4`.
   - `base_model` field added to the three existing curated model YAMLs
     (`qwen-3.6`, `gemma-4`, `nemotron-3`).
-  The `aggregate_quant_sweep` module and HTML tradeoff table are **not yet
-  implemented** — pull the quant variants and run the experiment; the
-  canonical suites produce per-model results. The post-processor ships in
-  a follow-up patch.
+  The post-processor and HTML tradeoff table shipped in v0.5.1.
+  Pull the quant variants (`ollama pull qwen3.6:35b-q8_0` etc.) and run the
+  experiment; canonical suites produce per-model results that
+  `aggregate_quant_sweep` groups into the tradeoff card automatically.
 - **Long-context empirical findings in `METHODOLOGY.md`.** Documents the
   "lost in the middle" pattern across all four tested models (depth drives
   retrieval more than context length), prefill throughput numbers, and the
