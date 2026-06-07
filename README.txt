@@ -451,6 +451,44 @@ machine.
 
 
 --------------------------------------------------------------------------------
+  Quantization sweep
+--------------------------------------------------------------------------------
+
+Want to know whether Q4_K_M is good enough, or whether the quality drop
+compared to the default quantization is acceptable given the speed gain?
+The harness can compare multiple quantization variants of the same model
+side-by-side and produces a quality-vs-speed-vs-VRAM tradeoff table in
+the HTML report.
+
+  Step 1 — pull the quantized variants (tags are Ollama conventions;
+           verify with "ollama search <model>" if they are not found):
+
+      ollama pull qwen3.6:35b-q8_0
+      ollama pull qwen3.6:35b-q4_k_m
+      # same for gemma4:27b-q8_0 / gemma4:27b-q4_k_m, nemotron3:33b-q8_0 / nemotron3:33b-q4_k_m
+
+  Step 2 — run the sweep experiment:
+
+      spark-bench --experiment configs/experiments/spark-quant-sweep.yaml
+
+  The TUI will show all three variants of each model in the picker.
+  Select the ones you have pulled and run any combination of suites.
+
+  Step 3 — read the report.
+
+  The HTML report automatically groups results by base model and renders
+  a tradeoff table for each one (Qwen-3 35B, Gemma-4 27B, Nemotron-3 33B).
+  Each row is colour-coded relative to the reference (Ollama default):
+    green  — within 0 pp of the reference (no detectable quality loss)
+    amber  — within 5 pp (slight regression, probably acceptable)
+    red    — more than 5 pp below the reference
+
+  The model configs live in configs/models/qwen-3.6-q{8,4}.yaml etc.
+  If the Ollama tag for a variant differs from the placeholder in the YAML,
+  update the artifact_path field before running.
+
+
+--------------------------------------------------------------------------------
   Common problems
 --------------------------------------------------------------------------------
 
