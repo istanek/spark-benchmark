@@ -58,8 +58,22 @@ model in turn, runs every test, and gives you a side-by-side table.
 --------------------------------------------------------------------------------
 
   You can benchmark Ollama Cloud models (the big ones you can't fit on the
-  box, e.g. gpt-oss:120b-cloud, deepseek-v3.1:671b-cloud) instead of a local
-  Ollama. No config edits needed — just two environment variables:
+  box, e.g. gpt-oss:120b-cloud, deepseek-v3.1:671b-cloud) alongside your
+  local models. No config edits needed.
+
+  The easiest way is through the full-screen menu:
+
+      spark-bench
+        → arrow to "Cloud" → Enter
+        → paste your API key (from https://ollama.com/settings/keys)
+
+  The TUI sets the two required environment variables automatically and
+  reloads the model picker so cloud models appear labelled "(cloud)" next
+  to your local ones labelled "(auto)". You can run both in the same
+  benchmark — routing is per model, so local requests go to localhost and
+  cloud requests go to ollama.com.
+
+  Or set the variables yourself before launching:
 
       export OLLAMA_HOST=https://ollama.com
       export OLLAMA_API_KEY=sk-...        # from https://ollama.com/settings/keys

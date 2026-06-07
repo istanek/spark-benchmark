@@ -43,8 +43,22 @@ PYTHONPATH=src python3 -m spark_benchmark.cli wizard \
 
 ### Ollama Cloud
 
-Point the Ollama backend at [Ollama Cloud](https://ollama.com) with two env
-vars (no config edits) and select a cloud model by tag:
+You can benchmark cloud models alongside your local ones — routing is
+per-model, so `qwen3.6:35b` goes to localhost and `gpt-oss:120b-cloud` goes
+to ollama.com in the same run.
+
+**Easiest: use the TUI Cloud menu**
+
+```bash
+spark-bench          # open the full-screen menu
+# → arrow to "Cloud" → Enter → paste your API key
+```
+
+The menu sets `OLLAMA_HOST` and `OLLAMA_API_KEY` automatically and reloads
+the model picker. Cloud models appear labelled `(cloud)`, local models as
+`(auto)`.
+
+**Or set env vars manually:**
 
 ```bash
 export OLLAMA_HOST=https://ollama.com
@@ -60,15 +74,14 @@ spark-bench run --experiment configs/experiments/spark-ollama-baseline.yaml \
   --platform spark --run-suite hallucination_grounding --model gpt-oss:120b-cloud
 ```
 
-`OLLAMA_HOST` redirects every request; `OLLAMA_API_KEY` is sent as a Bearer
-token and is read from the environment only (never persisted to configs,
-manifests, or reports). `--model` accepts an explicit `-cloud` tag even when
-it isn't in the experiment YAML or `/api/tags`. Valid `--run-suite` values:
-`hallucination_grounding`, `practical_structured_output`, `code_generation`,
-`sustained_throughput`, `long_context_retrieval` (+ `_fast`),
-`openclaw_speed`. Cloud runs
-report speed/quality but no local GPU telemetry (memory/power/temperature are
-unavailable remotely), and calls are billed over the network.
+`OLLAMA_API_KEY` is read from the environment only (never persisted to
+configs, manifests, or reports). `--model` accepts an explicit `-cloud` tag
+even when it isn't in the experiment YAML or `/api/tags`. Valid `--run-suite`
+values: `hallucination_grounding`, `practical_structured_output`,
+`code_generation`, `sustained_throughput`, `long_context_retrieval` (+
+`_fast`), `openclaw_speed`. Cloud runs report speed/quality but no local GPU
+telemetry (memory/power/temperature are unavailable remotely), and calls are
+billed over the network.
 
 ## Interactive CLI
 

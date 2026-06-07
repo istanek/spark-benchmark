@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-06-07
+
+### Fixed
+
+- **Local and cloud models can now be benchmarked in the same run.** The
+  Ollama adapter previously resolved the generation endpoint once at startup
+  from `$OLLAMA_HOST`, so whenever `OLLAMA_HOST=https://ollama.com` was set
+  (needed for cloud runs), every model — including locally-pulled ones like
+  `qwen3.6:35b` — was sent to ollama.com and returned 404. Generation routing
+  is now per-model: local models always go to `localhost:11434` (or the
+  configured backend endpoint), cloud models (`source=ollama-cloud` or a
+  `-cloud` tag) go to `https://ollama.com`. The API key is sent only for
+  cloud-routed requests, never to a local endpoint.
+- **TUI Cloud menu now sets `OLLAMA_HOST` alongside `OLLAMA_API_KEY`.** The
+  `do_cloud` prompt previously set only the API key, which fixed detection
+  (dual-probe uses the key to query ollama.com) but left generation routing
+  pointing at localhost. After entering a key the menu now also sets
+  `OLLAMA_HOST=https://ollama.com`; entering `-` clears both.
+- **Model discovery always probes `localhost:11434`, ignoring `OLLAMA_HOST`.**
+  When `OLLAMA_HOST=https://ollama.com` was set the local probe was
+  misdirected to ollama.com without auth, so local models disappeared from
+  the TUI picker. Detection now always probes the local daemon directly and
+  independently probes Ollama Cloud when `OLLAMA_API_KEY` is present.
+
+### Tests
+
+- 6 new tests in `tests/test_model_registry.py`: `model_is_cloud` detection,
+  and `OllamaAdapter` routing for local/cloud/private-remote-host cases.
+
 ## [0.5.1] - 2026-06-06
 
 ### Added
