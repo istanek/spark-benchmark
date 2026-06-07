@@ -206,15 +206,24 @@ def detect_ollama_models(
                 )
             )
 
-    # Probe 1: local / configured endpoint ($OLLAMA_HOST overrides localhost)
-    local_base = resolve_ollama_base(backend_config.options)
+    cloud_base = "https://ollama.com"
+    api_key = os.environ.get("OLLAMA_API_KEY", "").strip()
+
+    # Probe 1: local Ollama daemon — always http://localhost:11434 (or the
+    # backend YAML endpoint), NO auth.  We deliberately ignore $OLLAMA_HOST
+    # here because that variable only controls *generation* routing.  Discovery
+    # must always reach the local daemon so locally-pulled models are visible
+    # even when the user has OLLAMA_HOST=https://ollama.com set for cloud runs.
+    local_base = DEFAULT_ENDPOINT.rsplit("/api/", 1)[0]  # http://localhost:11434
+    # Respect a custom non-cloud $OLLAMA_HOST (e.g. a remote private Ollama)
+    # but skip it when it points at ollama.com (that's the cloud probe below).
+    env_host = os.environ.get("OLLAMA_HOST", "").strip()
+    if env_host and "ollama.com" not in env_host.lower():
+        local_base = env_host if env_host.startswith("http") else "https://" + env_host
     _probe_endpoint(local_base, {}, "local")
 
-    # Probe 2: Ollama Cloud — only when API key is present and the configured
-    # endpoint isn't already ollama.com (avoids a redundant second request)
-    api_key = os.environ.get("OLLAMA_API_KEY", "").strip()
-    cloud_base = "https://ollama.com"
-    if api_key and local_base.rstrip("/") != cloud_base:
+    # Probe 2: Ollama Cloud — only when API key is present.
+    if api_key:
         _probe_endpoint(cloud_base, ollama_auth_headers(), "cloud")
 
     return detected
