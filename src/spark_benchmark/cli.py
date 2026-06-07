@@ -41,6 +41,7 @@ from spark_benchmark.model_registry import (
 )
 from spark_benchmark.models import ModelConfig
 from spark_benchmark.orchestration import BenchmarkPlan, parse_benchmark_request, run_benchmark_bundle
+from spark_benchmark.quant_sweep import enrich_with_quant_sweep
 from spark_benchmark.reporting import aggregate_runs, render_cli_benchmark_summary, write_report
 from spark_benchmark.reliability import (
     load_reliability_suite,
@@ -282,27 +283,73 @@ def prompt_multiselect(
     return [index - 1 for index in selection]
 
 
-@app.callback()
-def main(ctx: typer.Context) -> None:
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    experiment: Path | None = typer.Option(
+        None,
+        "--experiment",
+        "-e",
+        exists=True,
+        dir_okay=False,
+        help="Experiment YAML to load (default: configs/experiments/spark-ollama-baseline.yaml).",
+    ),
+    platform: str | None = typer.Option(
+        None,
+        "--platform",
+        "-p",
+        help="Platform name (default: spark).",
+    ),
+) -> None:
     if ctx.invoked_subcommand is None:
         from spark_benchmark.shell import run_shell
 
-        run_shell()
+        run_shell(experiment_path=experiment, platform_name=platform)
 
 
 @app.command("shell")
-def shell_command() -> None:
+def shell_command(
+    experiment: Path | None = typer.Option(
+        None,
+        "--experiment",
+        "-e",
+        exists=True,
+        dir_okay=False,
+        help="Experiment YAML to load (default: configs/experiments/spark-ollama-baseline.yaml).",
+    ),
+    platform: str | None = typer.Option(
+        None,
+        "--platform",
+        "-p",
+        help="Platform name (default: spark).",
+    ),
+) -> None:
     """Launch the interactive spark-benchmark shell."""
     from spark_benchmark.shell import run_shell
 
-    run_shell()
+    run_shell(experiment_path=experiment, platform_name=platform)
 
 
 def shell_entrypoint() -> None:
     """Console-script entry point for `spark_benchmark`."""
+    import sys
+
     from spark_benchmark.shell import run_shell
 
-    run_shell()
+    experiment_path: Path | None = None
+    platform_name: str | None = None
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        if args[i] in ("--experiment", "-e") and i + 1 < len(args):
+            experiment_path = Path(args[i + 1])
+            i += 2
+        elif args[i] in ("--platform", "-p") and i + 1 < len(args):
+            platform_name = args[i + 1]
+            i += 2
+        else:
+            i += 1
+    run_shell(experiment_path=experiment_path, platform_name=platform_name)
 
 
 @app.command()
@@ -583,6 +630,7 @@ def benchmark(
         plan=plan,
     )
     aggregate = aggregate_runs(bundle_dir)
+    enrich_with_quant_sweep(aggregate, selected_configs, repo_root)
     report_path = bundle_dir / "report.md"
     report_html_path = bundle_dir / "report.html"
     write_report(report_path, "both", aggregate)
@@ -710,6 +758,7 @@ def wizard(
         progress_callback=lambda message: console.print(f"[cyan]{message}[/cyan]"),
     )
     aggregate = aggregate_runs(bundle_dir)
+    enrich_with_quant_sweep(aggregate, selected_configs, repo_root)
     report_path = bundle_dir / "report.md"
     report_html_path = bundle_dir / "report.html"
     write_report(report_path, "both", aggregate)

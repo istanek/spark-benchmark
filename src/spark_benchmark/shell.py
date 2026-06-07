@@ -37,6 +37,7 @@ from spark_benchmark.model_registry import (
 )
 from spark_benchmark.models import BackendConfig, ExperimentSpec, ModelConfig, PlatformConfig
 from spark_benchmark.orchestration import BenchmarkPlan, run_benchmark_bundle
+from spark_benchmark.quant_sweep import enrich_with_quant_sweep
 from spark_benchmark.reporting import aggregate_runs, render_cli_benchmark_summary, write_report
 from spark_benchmark.results_bundle import make_run_id, write_json
 from spark_benchmark.runners.registry import build_backend
@@ -131,11 +132,17 @@ def _resolve_repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def load_default_context() -> ShellContext:
+def load_default_context(
+    experiment_path: Path | None = None,
+    platform_name: str | None = None,
+) -> ShellContext:
     repo_root = _resolve_repo_root()
-    experiment_path = repo_root / "configs" / "experiments" / DEFAULT_EXPERIMENT
-    platform_path = repo_root / "configs" / "platforms" / f"{DEFAULT_PLATFORM}.yaml"
-    experiment_file = load_experiment(experiment_path)
+    resolved_experiment = experiment_path or (
+        repo_root / "configs" / "experiments" / DEFAULT_EXPERIMENT
+    )
+    resolved_platform = platform_name or DEFAULT_PLATFORM
+    platform_path = repo_root / "configs" / "platforms" / f"{resolved_platform}.yaml"
+    experiment_file = load_experiment(resolved_experiment)
     experiment_spec = experiment_file.experiment
     platform_config = load_platform(platform_path)
     backend_path = repo_root / "configs" / "backends" / f"{experiment_spec.backend.value}.yaml"
@@ -914,6 +921,7 @@ class TUIApp:
             progress_callback=progress,
         )
         aggregate = aggregate_runs(bundle_dir)
+        enrich_with_quant_sweep(aggregate, selected_configs, self.ctx.repo_root)
         report_path = bundle_dir / "report.md"
         report_html_path = bundle_dir / "report.html"
         write_report(report_path, "both", aggregate)
@@ -1339,9 +1347,15 @@ class TUIApp:
         self.clear_log()
 
 
-def run_shell() -> None:
+def run_shell(
+    experiment_path: Path | None = None,
+    platform_name: str | None = None,
+) -> None:
     try:
-        ctx = load_default_context()
+        ctx = load_default_context(
+            experiment_path=experiment_path,
+            platform_name=platform_name,
+        )
     except Exception as exc:
         console.print(f"[red]Failed to load default context:[/red] {exc}")
         sys.exit(1)
