@@ -1365,6 +1365,7 @@ class TUIApp:
         self.log("── Cloud API key ──")
         if raw == "-":
             os.environ.pop("OLLAMA_API_KEY", None)
+            os.environ.pop("OLLAMA_HOST", None)
             self.log("API key cleared. Cloud models will not be detected.")
         elif raw == "":
             if current_key:
@@ -1374,7 +1375,8 @@ class TUIApp:
             return
         else:
             os.environ["OLLAMA_API_KEY"] = raw
-            self.log("API key set.")
+            os.environ.setdefault("OLLAMA_HOST", "https://ollama.com")
+            self.log("API key set — requests to cloud models will route to https://ollama.com.")
         self.log("Re-probing Ollama (local + cloud)…")
         try:
             self.ctx = load_default_context(

@@ -240,14 +240,15 @@ def test_discover_custom_suites_skips_recent_pointing_at_missing_file() -> None:
 
 
 def test_do_cloud_sets_api_key() -> None:
-    """do_cloud() stores the entered key in os.environ and reloads context."""
+    """do_cloud() stores the key and sets OLLAMA_HOST to https://ollama.com."""
     import os
     import tempfile
     from unittest.mock import MagicMock, patch
 
     from spark_benchmark.shell import TUIApp
 
-    saved = os.environ.pop("OLLAMA_API_KEY", None)
+    saved_key = os.environ.pop("OLLAMA_API_KEY", None)
+    saved_host = os.environ.pop("OLLAMA_HOST", None)
     try:
         with tempfile.TemporaryDirectory() as tmp:
             ctx = _make_shell_context(Path(tmp))
@@ -258,23 +259,29 @@ def test_do_cloud_sets_api_key() -> None:
                     with patch("spark_benchmark.shell.load_default_context", return_value=ctx) as mock_load:
                         app.do_cloud(stdscr)
             assert os.environ.get("OLLAMA_API_KEY") == "sk-testkey123"
+            assert os.environ.get("OLLAMA_HOST") == "https://ollama.com"
             mock_load.assert_called_once()
     finally:
         os.environ.pop("OLLAMA_API_KEY", None)
-        if saved is not None:
-            os.environ["OLLAMA_API_KEY"] = saved
+        os.environ.pop("OLLAMA_HOST", None)
+        if saved_key is not None:
+            os.environ["OLLAMA_API_KEY"] = saved_key
+        if saved_host is not None:
+            os.environ["OLLAMA_HOST"] = saved_host
 
 
 def test_do_cloud_clears_key_on_dash() -> None:
-    """Entering '-' removes OLLAMA_API_KEY from the environment."""
+    """Entering '-' removes both OLLAMA_API_KEY and OLLAMA_HOST."""
     import os
     import tempfile
     from unittest.mock import MagicMock, patch
 
     from spark_benchmark.shell import TUIApp
 
-    saved = os.environ.get("OLLAMA_API_KEY")
+    saved_key = os.environ.get("OLLAMA_API_KEY")
+    saved_host = os.environ.get("OLLAMA_HOST")
     os.environ["OLLAMA_API_KEY"] = "old-key"
+    os.environ["OLLAMA_HOST"] = "https://ollama.com"
     try:
         with tempfile.TemporaryDirectory() as tmp:
             ctx = _make_shell_context(Path(tmp))
@@ -285,11 +292,16 @@ def test_do_cloud_clears_key_on_dash() -> None:
                     with patch("spark_benchmark.shell.load_default_context", return_value=ctx):
                         app.do_cloud(stdscr)
             assert "OLLAMA_API_KEY" not in os.environ
+            assert "OLLAMA_HOST" not in os.environ
     finally:
-        if saved is not None:
-            os.environ["OLLAMA_API_KEY"] = saved
+        if saved_key is not None:
+            os.environ["OLLAMA_API_KEY"] = saved_key
         else:
             os.environ.pop("OLLAMA_API_KEY", None)
+        if saved_host is not None:
+            os.environ["OLLAMA_HOST"] = saved_host
+        else:
+            os.environ.pop("OLLAMA_HOST", None)
 
 
 def test_do_cloud_empty_input_keeps_existing_key() -> None:
