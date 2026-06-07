@@ -317,53 +317,159 @@ def _models_by_name(suite: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
     return {str(model["model"]): model for model in suite.get("models", [])}
 
 
-def _overall_rank_rows(aggregate: dict[str, Any], model_names: list[str]) -> list[dict[str, Any]]:
-    speed_models = _models_by_name(_find_suite(aggregate, "openclaw_speed"))
-    grounding_models = _models_by_name(_find_suite(aggregate, "hallucination_grounding"))
-    structured_models = _models_by_name(_find_suite(aggregate, "practical_structured_output"))
+# Quality suites that contribute to the overall ranking.
+# Each entry is a suite key (unversioned); the suite is included in the
+# average only when it actually ran in the bundle.  Add new quality suites
+# here — no other change needed.
+_QUALITY_SUITE_KEYS: list[str] = [
+    "hallucination_grounding",
+    "practical_structured_output",
+    "code_generation",
+    "long_context_retrieval",
+    # future: "multi_needle_reasoning", "tool_use", ...
+]
 
-    ttfts = [speed_models[name]["avg_ttft_ms"] for name in model_names if name in speed_models and speed_models[name]["avg_ttft_ms"] is not None]
-    toks = [speed_models[name]["avg_tokens_per_s"] for name in model_names if name in speed_models and speed_models[name]["avg_tokens_per_s"] is not None]
-    min_ttft = min(ttfts) if ttfts else None
-    max_ttft = max(ttfts) if ttfts else None
-    min_tok = min(toks) if toks else None
-    max_tok = max(toks) if toks else None
+# Split between quality and speed in the overall score.
+_QUALITY_WEIGHT = 0.80
+_SPEED_WEIGHT = 0.20
+
+
+def _normalize_higher(values: list[float], v: float | None) -> float | None:
+    """Normalise *v* to [0, 1] where higher is better."""
+    if v is None or not values:
+        return None
+    lo, hi = min(values), max(values)
+    return 1.0 if lo == hi else (v - lo) / (hi - lo)
+
+
+def _normalize_lower(values: list[float], v: float | None) -> float | None:
+    """Normalise *v* to [0, 1] where lower is better (inverted)."""
+    if v is None or not values:
+        return None
+    lo, hi = min(values), max(values)
+    return 1.0 if lo == hi else (hi - v) / (hi - lo)
+
+
+def _overall_rank_rows(aggregate: dict[str, Any], model_names: list[str]) -> list[dict[str, Any]]:
+    """Compute an overall ranking from all suites that actually ran.
+
+    **Quality score** (weight ``_QUALITY_WEIGHT``):
+        Simple average of ``pass_rate`` across every quality suite in
+        ``_QUALITY_SUITE_KEYS`` that was included in this run.  Suites that
+        did not run are excluded from the denominator — they do not penalise
+        models that weren't tested on them.  Adding a new suite to
+        ``_QUALITY_SUITE_KEYS`` is the only change needed to include it.
+
+    **Speed score** (weight ``_SPEED_WEIGHT``):
+        Normalised average of all available speed signals:
+        - TTFT from ``openclaw_speed`` (lower is better)
+        - Decode tok/s from ``openclaw_speed`` (higher is better)
+        - Sustained tok/s from ``sustained_throughput`` (higher is better)
+        Each component is normalised across the model field, then averaged
+        over the components that were present.  Cloud models with no TTFT
+        data (``avg_ttft_ms == 0``) are excluded from TTFT normalisation.
+    """
+    # Load quality suite data
+    quality_data: dict[str, dict[str, dict[str, Any]]] = {
+        key: _models_by_name(_find_suite(aggregate, key))
+        for key in _QUALITY_SUITE_KEYS
+    }
+    # Only include suites that produced at least one model result
+    active_quality = [k for k in _QUALITY_SUITE_KEYS if quality_data[k]]
+
+    # Load speed data
+    speed_data = _models_by_name(_find_suite(aggregate, "openclaw_speed"))
+    sustained_data = _models_by_name(_find_suite(aggregate, "sustained_throughput"))
+
+    # Pre-compute normalisation ranges for speed signals.
+    # TTFT: skip zeros (cloud models report 0 when TTFT is unavailable)
+    ttfts = [
+        float(speed_data[n]["avg_ttft_ms"])
+        for n in model_names
+        if n in speed_data and speed_data[n].get("avg_ttft_ms")
+    ]
+    toks = [
+        float(speed_data[n]["avg_tokens_per_s"])
+        for n in model_names
+        if n in speed_data and speed_data[n].get("avg_tokens_per_s") is not None
+    ]
+    sus_toks = [
+        float(sustained_data[n]["sustained_tokens_per_s"])
+        for n in model_names
+        if n in sustained_data and sustained_data[n].get("sustained_tokens_per_s") is not None
+    ]
 
     rows: list[dict[str, Any]] = []
     for name in model_names:
-        grounding = grounding_models.get(name, {})
-        structured = structured_models.get(name, {})
-        speed = speed_models.get(name, {})
-        grounding_rate = float(grounding.get("pass_rate") or 0.0)
-        structured_rate = float(structured.get("pass_rate") or 0.0)
-        ttft = speed.get("avg_ttft_ms")
-        tok_s = speed.get("avg_tokens_per_s")
+        # --- Quality score ---
+        if active_quality:
+            quality_score = sum(
+                float(quality_data[k].get(name, {}).get("pass_rate") or 0.0)
+                for k in active_quality
+            ) / len(active_quality)
+        else:
+            quality_score = 0.0
 
-        speed_score = 0.0
-        if ttft is not None and min_ttft is not None and max_ttft is not None:
-            if max_ttft == min_ttft:
-                speed_score += 0.5
-            else:
-                speed_score += (max_ttft - float(ttft)) / (max_ttft - min_ttft) * 0.5
-        if tok_s is not None and min_tok is not None and max_tok is not None:
-            if max_tok == min_tok:
-                speed_score += 0.5
-            else:
-                speed_score += (float(tok_s) - min_tok) / (max_tok - min_tok) * 0.5
+        # --- Speed score ---
+        speed_components: list[float] = []
+        speed_entry = speed_data.get(name, {})
+        ttft = speed_entry.get("avg_ttft_ms")
+        tok_s = speed_entry.get("avg_tokens_per_s")
 
-        overall_score = grounding_rate * 0.6 + structured_rate * 0.25 + speed_score * 0.15
+        # Only use TTFT when it is non-zero (0.0 means unavailable, e.g. cloud)
+        ttft_norm = _normalize_lower(ttfts, float(ttft) if ttft else None)
+        if ttft_norm is not None:
+            speed_components.append(ttft_norm)
+
+        tok_norm = _normalize_higher(toks, float(tok_s) if tok_s is not None else None)
+        if tok_norm is not None:
+            speed_components.append(tok_norm)
+
+        sus_entry = sustained_data.get(name, {})
+        sus_tps = sus_entry.get("sustained_tokens_per_s")
+        sus_norm = _normalize_higher(sus_toks, float(sus_tps) if sus_tps is not None else None)
+        if sus_norm is not None:
+            speed_components.append(sus_norm)
+
+        speed_score = sum(speed_components) / len(speed_components) if speed_components else 0.0
+
+        # --- Overall ---
+        overall_score = quality_score * _QUALITY_WEIGHT + speed_score * _SPEED_WEIGHT
+
+        # Collect per-quality-suite rates for display in the HTML report
+        suite_rates: dict[str, float | None] = {
+            k: float(quality_data[k][name]["pass_rate"])
+            if name in quality_data[k] and quality_data[k][name].get("pass_rate") is not None
+            else (0.0 if k in active_quality else None)
+            for k in _QUALITY_SUITE_KEYS
+        }
+
         rows.append(
             {
                 "model": name,
-                "grounding_rate": grounding_rate,
-                "structured_rate": structured_rate,
-                "avg_ttft_ms": ttft,
+                # keep legacy keys so the HTML renderer and verdict helpers work unchanged
+                "grounding_rate": suite_rates.get("hallucination_grounding"),
+                "structured_rate": suite_rates.get("practical_structured_output"),
+                "code_rate": suite_rates.get("code_generation"),
+                "long_context_rate": suite_rates.get("long_context_retrieval"),
+                "avg_ttft_ms": ttft if ttft else None,
                 "avg_tokens_per_s": tok_s,
+                "sustained_tokens_per_s": sus_tps if sus_tps else None,
+                "quality_score": round(quality_score, 4),
                 "speed_score": round(speed_score, 4),
                 "overall_score": round(overall_score, 4),
+                "active_quality_suites": active_quality,
             }
         )
-    rows.sort(key=lambda item: (-item["overall_score"], -item["grounding_rate"], -(item["structured_rate"]), item["avg_ttft_ms"] or 10**9, -(item["avg_tokens_per_s"] or 0.0), item["model"]))
+
+    rows.sort(key=lambda r: (
+        -r["overall_score"],
+        -(r["grounding_rate"] or 0.0),
+        -(r["structured_rate"] or 0.0),
+        r["avg_ttft_ms"] or 10 ** 9,
+        -(r["avg_tokens_per_s"] or 0.0),
+        r["model"],
+    ))
     return rows
 
 
@@ -424,15 +530,17 @@ def render_cli_benchmark_summary(
     lines.append("Overall ranking:")
     for index, row in enumerate(ranking, start=1):
         reason_bits = []
-        if row["grounding_rate"] >= 0.99:
+        gr = row.get("grounding_rate") or 0.0
+        sr = row.get("structured_rate") or 0.0
+        if gr >= 0.99:
             reason_bits.append("best grounding reliability")
-        elif row["grounding_rate"] >= 0.8:
+        elif gr >= 0.8:
             reason_bits.append("strong grounding reliability")
-        if row["structured_rate"] >= 0.99:
+        if sr >= 0.99:
             reason_bits.append("perfect structured output")
-        if index == 1 and row["avg_ttft_ms"] is not None:
+        if index == 1 and row.get("avg_ttft_ms") is not None:
             reason_bits.append("best overall weighted score")
-        if row["avg_ttft_ms"] is not None and row["avg_tokens_per_s"] is not None:
+        if row.get("avg_ttft_ms") is not None and row.get("avg_tokens_per_s") is not None:
             reason_bits.append(f"TTFT {row['avg_ttft_ms']} ms, {row['avg_tokens_per_s']} tok/s")
         reason = "; ".join(reason_bits) if reason_bits else "balanced result"
         lines.append(f"{index}. {row['model']} — {reason}")
